@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agro Pluse - Agricultural Investment Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased pb-20 md:pb-0">
+
+    <!-- Navigation Bar -->
+    <nav class="glass-nav fixed top-0 w-full z-50 border-b border-gray-100 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <!-- Logo -->
+                <a href="/" class="flex items-center cursor-pointer decoration-0">
+                    <i class="fa-solid fa-seedling text-blue-800 text-2xl mr-2"></i>
+                    <span class="font-bold text-xl tracking-tight text-gray-900">Agro<span class="text-blue-800">Pluse</span></span>
+                </a>
+
+                <!-- Desktop Nav -->
+                <div class="hidden md:flex items-center space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-800 px-3 py-2 font-medium">Home</a>
+                    <a href="/#invest-section" class="text-gray-600 hover:text-blue-800 px-3 py-2 font-medium">Packages</a>
+                    <a href="/#how-it-works" class="text-gray-600 hover:text-blue-800 px-3 py-2 font-medium">How it Works</a>
+                    <a href="/website" class="text-blue-800 font-bold px-3 py-2">Website</a>
+                    <a href="/login" class="bg-blue-800 hover:bg-blue-900 text-white px-5 py-2 rounded-full font-medium transition shadow-sm shadow-blue-200">Login</a>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden">
+                    <button onclick="toggleMobileMenu()" class="text-gray-600 focus:outline-none p-2">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu Dropdown -->
+        <div id="mobile-menu" class="hidden md:hidden bg-white border-t border-gray-100 absolute w-full shadow-lg">
+            <div class="px-4 pt-2 pb-4 space-y-1">
+                <a href="/" class="block w-full text-left px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50">Home</a>
+                <a href="/#invest-section" class="block w-full text-left px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50">Packages</a>
+                <a href="/#how-it-works" class="block w-full text-left px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50">How it Works</a>
+                <a href="/website" class="block w-full text-left px-3 py-3 rounded-md text-base font-bold text-blue-800 bg-blue-50">Website</a>
+                <a href="/login" class="block w-full text-left px-3 py-3 rounded-md text-base font-bold text-white bg-blue-800 hover:bg-blue-900 text-center mt-2">Login</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="pt-20 fade-in">
+
+        <!-- Hero Section -->
+        <div class="bg-gradient-to-r from-blue-800 to-blue-900 text-white py-16 md:py-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                <h1 class="text-4xl md:text-5xl font-extrabold mb-4">Welcome to Agro Pluse</h1>
+                <p class="text-lg md:text-xl text-blue-100 max-w-2xl mx-auto">
+                    The premier agricultural investment platform connecting investors with high-yield farming opportunities across Ghana
+                </p>
+            </div>
+        </div>
+
+        <!-- About Section -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+            <div class="grid md:grid-cols-2 gap-12 items-center">
+                <div>
+                    <h2 class="text-3xl md:text-4xl font-bold mb-4 text-gray-900">About Agro Pluse</h2>
+                    <p class="text-gray-600 text-lg mb-4">
+                        Agro Pluse is revolutionizing agricultural investment in Ghana by making it accessible to everyone. We bridge the gap between investors and farmers, allowing you to grow your wealth while supporting sustainable farming practices.
+                    </p>
+                    <p class="text-gray-600 text-lg mb-4">
+                        With investments starting from just GHS 20, you can participate in profitable agricultural ventures without requiring large capital. Our platform handles all the complexities of farm management while you earn consistent returns.
+                    </p>
+                    <ul class="space-y-3">
+                        <li class="flex items-center"><i class="fa-solid fa-check text-green-600 mr-3"></i><span class="text-gray-700">Transparent & Secure</span></li>
+                        <li class="flex items-center"><i class="fa-solid fa-check text-green-600 mr-3"></i><span class="text-gray-700">Real Asset Backing</span></li>
+                        <li class="flex items-center"><i class="fa-solid fa-check text-green-600 mr-3"></i><span class="text-gray-700">Flexible Investment Terms</span></li>
+                        <li class="flex items-center"><i class="fa-solid fa-check text-green-600 mr-3"></i><span class="text-gray-700">Expert Farm Management</span></li>
+                    </ul>
+                </div>
+                <div class="bg-blue-50 rounded-2xl p-8">
+                    <img src="https://images.unsplash.com/photo-1500595046891-89b5a9615d49?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60" alt="Agriculture" class="rounded-xl w-full">
+                </div>
+            </div>
+        </div>
+
+        <!-- Why Choose Us -->
+        <div class="bg-gray-50 py-16">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <h2 class="text-3xl md:text-4xl font-bold text-center mb-12 text-gray-900">Why Choose Agro Pluse?</h2>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="bg-white rounded-2xl p-8 shadow-sm hover:shadow-lg transition">
+                        <div class="text-blue-800 text-4xl mb-4">
+                            <i class="fa-solid fa-shield"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900">Safety First</h3>
+                        <p class="text-gray-600">Your investments are backed by real agricultural assets with proven track records and expert oversight.</p>
+                    </div>
+                    <div class="bg-white rounded-2xl p-8 shadow-sm hover:shadow-lg transition">
+                        <div class="text-blue-800 text-4xl mb-4">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900">Strong Returns</h3>
+                        <p class="text-gray-600">Enjoy competitive returns that outpace traditional savings while supporting sustainable agriculture.</p>
+                    </div>
+                    <div class="bg-white rounded-2xl p-8 shadow-sm hover:shadow-lg transition">
+                        <div class="text-blue-800 text-4xl mb-4">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900">Community Impact</h3>
+                        <p class="text-gray-600">Support local farmers and contribute to food security while building your financial future.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA Section -->
+        <div class="bg-blue-800 text-white py-16">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                <h2 class="text-3xl md:text-4xl font-bold mb-4">Ready to Start Investing?</h2>
+                <p class="text-lg text-blue-100 mb-8">Join thousands of Ghanaians growing their wealth through agriculture</p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <a href="/signup" class="bg-white text-blue-800 font-bold py-3 px-8 rounded-full hover:bg-gray-100 transition transform hover:scale-105 text-center">
+                        Create Account
+                    </a>
+                    <a href="/login" class="bg-blue-700 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-full transition border-2 border-white">
+                        Login
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contact/Footer Section -->
+        <footer class="bg-gray-900 text-gray-300 py-12">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid md:grid-cols-4 gap-8 mb-8">
+                    <div>
+                        <h4 class="text-white font-bold mb-4 flex items-center">
+                            <i class="fa-solid fa-seedling text-green-400 mr-2"></i>Agro Pluse
+                        </h4>
+                        <p class="text-sm">Making agricultural investment accessible to everyone in Ghana.</p>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold mb-4">Quick Links</h4>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="/" class="hover:text-white transition">Home</a></li>
+                            <li><a href="/#invest-section" class="hover:text-white transition">Packages</a></li>
+                            <li><a href="/website" class="hover:text-white transition">About</a></li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold mb-4">Account</h4>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="/login" class="hover:text-white transition">Login</a></li>
+                            <li><a href="/signup" class="hover:text-white transition">Sign Up</a></li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="text-white font-bold mb-4">Contact</h4>
+                        <p class="text-sm mb-2">
+                            <i class="fa-solid fa-envelope mr-2"></i>contact@agropluse.com
+                        </p>
+                        <p class="text-sm">
+                            <a href="https://wa.me/233591941508" target="_blank" rel="noopener noreferrer" class="hover:text-white transition">
+                                <i class="fa-brands fa-whatsapp mr-2"></i>WhatsApp: +233 59 194 1508
+                            </a>
+                        </p>
+                    </div>
+                </div>
+                <div class="border-t border-gray-700 pt-8 text-center text-sm">
+                    <p>&copy; 2024 Agro Pluse. All rights reserved. Growing Ghana's Agricultural Future.</p>
+                </div>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Navigation JS Logic -->
+    <script>
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            if (menu.classList.contains('hidden')) {
+                menu.classList.remove('hidden');
+            } else {
+                menu.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

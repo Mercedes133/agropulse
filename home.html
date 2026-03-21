@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agro Pluse - Smart Agricultural Investment</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f8fafc;
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased">
+    <nav class="glass-nav fixed top-0 w-full z-50 border-b border-slate-200/80">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <a href="/" class="flex items-center">
+                    <i class="fa-solid fa-seedling text-blue-800 text-2xl mr-2"></i>
+                    <span class="font-bold text-xl text-slate-900">Agro<span class="text-blue-800">Pluse</span></span>
+                </a>
+
+                <div class="hidden md:flex items-center space-x-3">
+                    <a href="/" class="text-blue-800 font-semibold px-3 py-2">Home</a>
+                    <a href="#packages" class="text-slate-600 hover:text-blue-800 px-3 py-2 font-medium">Packages</a>
+                    <a href="#how-it-works" class="text-slate-600 hover:text-blue-800 px-3 py-2 font-medium">How It Works</a>
+                    <a href="#faq" class="text-slate-600 hover:text-blue-800 px-3 py-2 font-medium">FAQ</a>
+                    <a id="desktop-dashboard-link" href="/dashboard" class="hidden text-blue-800 hover:text-blue-900 px-3 py-2 font-semibold">Dashboard</a>
+                    <button id="desktop-logout-btn" class="hidden text-blue-800 hover:text-blue-900 px-3 py-2 font-semibold">Logout</button>
+                    <a id="desktop-login-link" href="/login" class="text-blue-800 hover:text-blue-900 px-3 py-2 font-semibold">Login</a>
+                    <a id="desktop-signup-link" href="/signup" class="bg-blue-800 hover:bg-blue-900 text-white px-5 py-2 rounded-full font-semibold transition">Create Account</a>
+                </div>
+
+                <button onclick="toggleMobileMenu()" class="md:hidden p-2 text-slate-700" aria-label="Toggle menu">
+                    <i class="fa-solid fa-bars text-xl"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="mobile-menu" class="hidden md:hidden border-t border-slate-200 bg-white">
+            <div class="px-4 py-3 space-y-1">
+                <a href="/" class="block px-3 py-3 rounded-lg text-base font-semibold text-blue-800 bg-blue-50">Home</a>
+                <a href="#packages" class="block px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50">Packages</a>
+                <a href="#how-it-works" class="block px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50">How It Works</a>
+                <a href="#faq" class="block px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50">FAQ</a>
+                <a id="mobile-dashboard-link" href="/dashboard" class="hidden px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50">Dashboard</a>
+                <button id="mobile-logout-btn" class="hidden w-full text-left px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50">Logout</button>
+                <a id="mobile-login-link" href="/login" class="block px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-50">Login</a>
+                <a id="mobile-signup-link" href="/signup" class="block mt-2 text-center px-3 py-3 rounded-lg text-base font-semibold text-white bg-blue-800 hover:bg-blue-900">Create Account</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="pt-16">
+        <section class="relative bg-slate-900 text-white overflow-hidden">
+            <div class="absolute inset-0 opacity-30 bg-[url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1800&q=80')] bg-cover bg-center"></div>
+            <div class="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-blue-900/70 to-slate-900/90"></div>
+            <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+                <div class="max-w-3xl">
+                    <p class="inline-flex items-center px-4 py-2 rounded-full bg-white/15 text-sm font-medium mb-6">
+                        <i class="fa-solid fa-shield-heart mr-2"></i> Trusted by growing investors in Ghana
+                    </p>
+                    <h1 class="text-4xl md:text-6xl font-extrabold leading-tight mb-6">
+                        Grow your money through real agriculture investments.
+                    </h1>
+                    <p class="text-blue-100 text-lg md:text-xl mb-8">
+                        Start from as low as GHS 20, choose a package that fits your budget, and track your progress with confidence.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <a href="/signup" class="inline-flex items-center justify-center px-8 py-3 rounded-full bg-white text-blue-900 font-bold hover:bg-slate-100 transition">
+                            Start Now
+                        </a>
+                        <a href="#packages" class="inline-flex items-center justify-center px-8 py-3 rounded-full border-2 border-white text-white font-bold hover:bg-white hover:text-blue-900 transition">
+                            View Packages
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="-mt-8 relative z-10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="bg-white rounded-2xl shadow-lg border border-slate-100 p-5 md:p-7 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="text-center md:text-left">
+                        <p class="text-sm text-slate-500">Active Users</p>
+                        <p class="text-2xl font-extrabold text-slate-900">2,500+</p>
+                    </div>
+                    <div class="text-center md:text-left">
+                        <p class="text-sm text-slate-500">Farm Projects</p>
+                        <p class="text-2xl font-extrabold text-slate-900">12</p>
+                    </div>
+                    <div class="text-center md:text-left">
+                        <p class="text-sm text-slate-500">Payouts</p>
+                        <p class="text-2xl font-extrabold text-blue-800">GH₵ 50k+</p>
+                    </div>
+                    <div class="text-center md:text-left">
+                        <p class="text-sm text-slate-500">Entry Amount</p>
+                        <p class="text-2xl font-extrabold text-slate-900">GH₵ 20</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="packages" class="py-16 md:py-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 mb-3">Investment Packages</h2>
+                    <p class="text-slate-600 max-w-2xl mx-auto">Pick your preferred package and start building consistent returns from agriculture.</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-7">
+                    <article class="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition">
+                        <img src="https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?auto=format&fit=crop&w=900&q=80" alt="Poultry" class="h-48 w-full object-cover">
+                        <div class="p-6">
+                            <p class="text-xs uppercase tracking-wide text-blue-700 font-bold mb-2">Starter</p>
+                            <h3 class="text-xl font-bold text-slate-900 mb-2">Poultry Starter</h3>
+                            <p class="text-slate-600 mb-2">Fast cycle package designed for new investors entering agriculture.</p>
+                            <p class="text-green-700 font-semibold mb-5">Projected return: 3x in 1 week</p>
+                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                        </div>
+                    </article>
+
+                    <article class="bg-white rounded-2xl overflow-hidden border-2 border-blue-800 shadow-lg">
+                        <img src="https://images.unsplash.com/photo-1524024973431-2ad916746881?auto=format&fit=crop&w=900&q=80" alt="Goat" class="h-48 w-full object-cover">
+                        <div class="p-6">
+                            <p class="text-xs uppercase tracking-wide text-blue-700 font-bold mb-2">Most Popular</p>
+                            <h3 class="text-xl font-bold text-slate-900 mb-2">Boer Goat</h3>
+                            <p class="text-slate-600 mb-2">Balanced returns and growth timeline for medium-term investors.</p>
+                            <p class="text-green-700 font-semibold mb-5">Projected return: 3x in 1 week</p>
+                            <a href="/signup" class="inline-flex w-full justify-center bg-blue-800 hover:bg-blue-900 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                        </div>
+                    </article>
+
+                    <article class="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl transition">
+                        <img src="https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?auto=format&fit=crop&w=900&q=80" alt="Dairy Cow" class="h-48 w-full object-cover">
+                        <div class="p-6">
+                            <p class="text-xs uppercase tracking-wide text-blue-700 font-bold mb-2">Premium</p>
+                            <h3 class="text-xl font-bold text-slate-900 mb-2">Dairy Cow</h3>
+                            <p class="text-slate-600 mb-2">Long-term package focused on strong, sustainable annual returns.</p>
+                            <p class="text-green-700 font-semibold mb-5">Projected return: 3x in 1 week</p>
+                            <a href="/signup" class="inline-flex w-full justify-center bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-semibold transition">Invest Now</a>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section id="how-it-works" class="bg-white py-16 md:py-20 border-y border-slate-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-extrabold text-slate-900 mb-3">How It Works</h2>
+                    <p class="text-slate-600">Simple onboarding process with no manual approval delays.</p>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="bg-slate-50 rounded-2xl p-7 text-center">
+                        <div class="w-14 h-14 mx-auto rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-2xl mb-4">
+                            <i class="fa-solid fa-user-plus"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-900 mb-2">Create Account</h3>
+                        <p class="text-slate-600">Register in minutes with your email, phone, and password.</p>
+                    </div>
+                    <div class="bg-slate-50 rounded-2xl p-7 text-center">
+                        <div class="w-14 h-14 mx-auto rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-2xl mb-4">
+                            <i class="fa-solid fa-layer-group"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-900 mb-2">Choose Package</h3>
+                        <p class="text-slate-600">Select the investment option that matches your budget and timeline.</p>
+                    </div>
+                    <div class="bg-slate-50 rounded-2xl p-7 text-center">
+                        <div class="w-14 h-14 mx-auto rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-2xl mb-4">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                        <h3 class="text-lg font-bold text-slate-900 mb-2">Track Growth</h3>
+                        <p class="text-slate-600">Log in anytime and monitor your account activity and progress.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="py-16 md:py-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <div class="bg-slate-900 text-white rounded-2xl p-8">
+                        <h3 class="text-2xl font-bold mb-4">What people say</h3>
+                        <p class="text-slate-200 mb-4">“I started with a small amount and was surprised by how simple everything was. Agro Pluse made me confident in agriculture investing.”</p>
+                        <p class="text-sm text-slate-300 font-medium">— Kwame A., Investor</p>
+                    </div>
+                    <div id="faq" class="bg-white rounded-2xl p-8 border border-slate-100">
+                        <h3 class="text-2xl font-bold text-slate-900 mb-4">FAQ</h3>
+                        <div class="space-y-4 text-slate-600">
+                            <div>
+                                <p class="font-semibold text-slate-800">Do I need approval after signup?</p>
+                                <p>No. Your account is created instantly and you can log in immediately.</p>
+                            </div>
+                            <div>
+                                <p class="font-semibold text-slate-800">Can I log in anytime?</p>
+                                <p>Yes. Use your email and password to access your account whenever you want.</p>
+                            </div>
+                            <div>
+                                <p class="font-semibold text-slate-800">What is the minimum amount?</p>
+                                <p>You can start from GHS 20 and scale up as you grow.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-blue-800 text-white py-14">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                <h2 class="text-3xl md:text-4xl font-extrabold mb-4">Ready to build wealth with agriculture?</h2>
+                <p class="text-blue-100 mb-8 text-lg">Create your account and begin in a few minutes.</p>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <a href="/signup" class="bg-white text-blue-900 font-bold py-3 px-8 rounded-full hover:bg-slate-100 transition">Create Account</a>
+                    <a href="/login" class="border-2 border-white text-white font-bold py-3 px-8 rounded-full hover:bg-white hover:text-blue-900 transition">Login</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="bg-slate-950 text-slate-300 py-8">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p class="text-sm">© <span id="year"></span> Agro Pluse. All rights reserved.</p>
+            <div class="flex flex-wrap items-center justify-center gap-5 text-sm">
+                <a href="/website" class="hover:text-white transition">About</a>
+                <a href="/login" class="hover:text-white transition">Login</a>
+                <a href="/signup" class="hover:text-white transition">Sign Up</a>
+                <a href="https://wa.me/233591941508" target="_blank" rel="noopener noreferrer" class="hover:text-white transition">
+                    <i class="fa-brands fa-whatsapp mr-1"></i>WhatsApp
+                </a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+        }
+
+        function setAuthUi(authenticated) {
+            document.getElementById('desktop-dashboard-link').classList.toggle('hidden', !authenticated);
+            document.getElementById('desktop-logout-btn').classList.toggle('hidden', !authenticated);
+            document.getElementById('desktop-login-link').classList.toggle('hidden', authenticated);
+            document.getElementById('desktop-signup-link').classList.toggle('hidden', authenticated);
+
+            document.getElementById('mobile-dashboard-link').classList.toggle('hidden', !authenticated);
+            document.getElementById('mobile-logout-btn').classList.toggle('hidden', !authenticated);
+            document.getElementById('mobile-login-link').classList.toggle('hidden', authenticated);
+            document.getElementById('mobile-signup-link').classList.toggle('hidden', authenticated);
+        }
+
+        async function loadAuthState() {
+            try {
+                const response = await fetch('/api/me');
+                const data = await response.json();
+                setAuthUi(!!data.authenticated);
+            } catch (error) {
+                setAuthUi(false);
+            }
+        }
+
+        async function logout() {
+            try {
+                const response = await fetch('/api/logout', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    window.location.href = '/';
+                    return;
+                }
+                alert('Logout failed. Please try again.');
+            } catch (error) {
+                alert('Logout failed. Please try again.');
+            }
+        }
+
+        document.getElementById('year').textContent = new Date().getFullYear();
+
+        document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+            anchor.addEventListener('click', function (event) {
+                const targetId = this.getAttribute('href');
+                const target = document.querySelector(targetId);
+                if (!target) return;
+                event.preventDefault();
+                document.getElementById('mobile-menu').classList.add('hidden');
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+
+        document.getElementById('desktop-logout-btn').addEventListener('click', logout);
+        document.getElementById('mobile-logout-btn').addEventListener('click', logout);
+        loadAuthState();
+    </script>
+</body>
+</html>

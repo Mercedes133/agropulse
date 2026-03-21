@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Agro Pluse</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body class="text-gray-800 antialiased">
+
+    <!-- Navigation Bar -->
+    <nav class="glass-nav fixed top-0 w-full z-50 border-b border-gray-100 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <!-- Logo -->
+                <a href="/" class="flex items-center cursor-pointer decoration-0">
+                    <i class="fa-solid fa-seedling text-blue-800 text-2xl mr-2"></i>
+                    <span class="font-bold text-xl tracking-tight text-gray-900">Agro<span class="text-blue-800">Pluse</span></span>
+                </a>
+
+                <!-- Desktop Nav -->
+                <div class="hidden md:flex items-center space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-blue-800 px-3 py-2 font-medium">Home</a>
+                    <a href="/#packages" class="text-gray-600 hover:text-blue-800 px-3 py-2 font-medium">Packages</a>
+                    <a href="/#how-it-works" class="text-gray-600 hover:text-blue-800 px-3 py-2 font-medium">How it Works</a>
+                    <a href="/website" class="text-gray-600 hover:text-blue-800 px-3 py-2 font-medium">Website</a>
+                    <a href="/login" class="bg-blue-800 hover:bg-blue-900 text-white px-5 py-2 rounded-full font-medium transition shadow-sm shadow-blue-200">Login</a>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <div class="md:hidden">
+                    <button onclick="toggleMobileMenu()" class="text-gray-600 focus:outline-none p-2">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu Dropdown -->
+        <div id="mobile-menu" class="hidden md:hidden bg-white border-t border-gray-100 absolute w-full shadow-lg">
+            <div class="px-4 pt-2 pb-4 space-y-1">
+                <a href="/" class="block w-full text-left px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50">Home</a>
+                <a href="/#packages" class="block w-full text-left px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50">Packages</a>
+                <a href="/#how-it-works" class="block w-full text-left px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50">How it Works</a>
+                <a href="/website" class="block w-full text-left px-3 py-3 rounded-md text-base font-medium text-gray-700 hover:bg-gray-50">Website</a>
+                <a href="/login" class="block w-full text-left px-3 py-3 rounded-md text-base font-bold text-white bg-blue-800 hover:bg-blue-900 text-center mt-2">Login</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Login Form -->
+    <main class="pt-20 min-h-screen flex items-center justify-center px-4">
+        <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+            <h2 class="text-2xl font-bold text-center mb-6 text-gray-900">Login to Agro Pluse</h2>
+            <form id="login-form" action="/api/login" method="post">
+                <div class="mb-4">
+                    <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="email" name="email" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-800 focus:border-blue-800">
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-800 focus:border-blue-800">
+                </div>
+                <p id="form-message" class="hidden text-sm mb-4"></p>
+                <button type="submit" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded-full transition">Login</button>
+            </form>
+            <p class="text-center mt-4 text-sm text-gray-600">Don't have an account? <a href="/signup" class="text-blue-800 hover:underline">Sign up</a></p>
+        </div>
+    </main>
+
+    <!-- Navigation JS Logic -->
+    <script>
+        function toggleMobileMenu() {
+            const menu = document.getElementById('mobile-menu');
+            if (menu.classList.contains('hidden')) {
+                menu.classList.remove('hidden');
+            } else {
+                menu.classList.add('hidden');
+            }
+        }
+
+        async function checkAlreadyLoggedIn() {
+            try {
+                const response = await fetch('/api/me');
+                const data = await response.json();
+                if (data.authenticated) {
+                    window.location.href = '/dashboard';
+                }
+            } catch (error) {
+                console.error('Session check failed:', error);
+            }
+        }
+
+        function showMessage(message, isSuccess) {
+            const msg = document.getElementById('form-message');
+            msg.textContent = message;
+            msg.className = `text-sm mb-4 ${isSuccess ? 'text-green-600' : 'text-red-600'}`;
+        }
+
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Login successful. Redirecting...', true);
+                    window.setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 600);
+                } else {
+                    showMessage(data.message || 'Login failed', false);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showMessage('Login failed. Please ensure the server is running.', false);
+            });
+        });
+
+        checkAlreadyLoggedIn();
+    </script>
+</body>
+</html>
