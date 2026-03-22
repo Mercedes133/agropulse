@@ -735,16 +735,32 @@ app.post('/api/signup', (req, res) => {
 
 app.post('/api/login', (req, res) => {
   const { email, password } = req.body;
-  const normalizedEmail = normalizeEmail(email);
+  const identifier = String(email || '').trim();
+  const normalizedEmail = normalizeEmail(identifier);
+  const normalizedPhone = normalizePhone(identifier);
+  const rawPassword = String(password || '');
+  const trimmedPassword = rawPassword.trim();
   
   // Validate input
-  if (!normalizedEmail || !password) {
+  if (!identifier || !rawPassword) {
     return res.json({ success: false, message: 'Email and password required' });
   }
-  
-  const hashedPassword = hashPassword(password);
-  db.get(`SELECT * FROM users WHERE LOWER(email) = ? AND password = ? AND status = 'approved'`,
-    [normalizedEmail, hashedPassword], (err, row) => {
+
+  const loginWithPassword = (passwordValue, callback) => {
+    const hashedPassword = hashPassword(passwordValue);
+
+    db.get(
+      `SELECT *
+       FROM users
+       WHERE (LOWER(email) = ? OR phone = ?)
+         AND password = ?
+         AND status = 'approved'`,
+      [normalizedEmail, normalizedPhone, hashedPassword],
+      callback
+    );
+  };
+
+  loginWithPassword(rawPassword, (err, row) => {
       if (err) {
         console.error('Login error:', err);
         return res.json({ success: false, message: 'Server error' });
@@ -757,10 +773,32 @@ app.post('/api/login', (req, res) => {
           phone: row.phone,
           balance: Number(row.balance || 0)
         };
-        res.json({ success: true, message: 'Login successful', user: req.session.user });
-      } else {
-        res.json({ success: false, message: 'Invalid credentials or not approved' });
+        return res.json({ success: true, message: 'Login successful', user: req.session.user });
       }
+
+      if (trimmedPassword && trimmedPassword !== rawPassword) {
+        return loginWithPassword(trimmedPassword, (retryErr, retryRow) => {
+          if (retryErr) {
+            console.error('Login retry error:', retryErr);
+            return res.json({ success: false, message: 'Server error' });
+          }
+
+          if (retryRow) {
+            req.session.user = {
+              id: retryRow.id,
+              name: retryRow.name,
+              email: retryRow.email,
+              phone: retryRow.phone,
+              balance: Number(retryRow.balance || 0)
+            };
+            return res.json({ success: true, message: 'Login successful', user: req.session.user });
+          }
+
+          return res.json({ success: false, message: 'Invalid credentials or not approved' });
+        });
+      }
+
+      return res.json({ success: false, message: 'Invalid credentials or not approved' });
     });
 });
 
