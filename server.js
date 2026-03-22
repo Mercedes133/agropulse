@@ -434,6 +434,24 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function normalizePhone(phone) {
+  const digitsOnly = String(phone || '').replace(/\D/g, '');
+
+  if (!digitsOnly) {
+    return '';
+  }
+
+  if (digitsOnly.startsWith('233') && digitsOnly.length === 12) {
+    return `0${digitsOnly.slice(3)}`;
+  }
+
+  if (digitsOnly.length === 9) {
+    return `0${digitsOnly}`;
+  }
+
+  return digitsOnly;
+}
+
 function generateOtpCode() {
   return String(Math.floor(100000 + (Math.random() * 900000)));
 }
@@ -563,8 +581,9 @@ function isStrongPassword(password) {
 app.post('/api/signup', (req, res) => {
   const { name, email, phone, password, referralCode } = req.body;
   const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
 
-  if (!name || !normalizedEmail || !phone || !password) {
+  if (!name || !normalizedEmail || !normalizedPhone || !password) {
     return res.status(400).json({ success: false, message: 'All fields are required' });
   }
 
@@ -575,13 +594,27 @@ app.post('/api/signup', (req, res) => {
     });
   }
 
-  db.get(`SELECT id FROM users WHERE LOWER(email) = ?`, [normalizedEmail], (emailErr, row) => {
+  db.get(
+    `SELECT id,
+            CASE
+              WHEN LOWER(email) = ? THEN 'email'
+              WHEN phone = ? THEN 'phone'
+              ELSE 'unknown'
+            END AS duplicate_type
+     FROM users
+     WHERE LOWER(email) = ? OR phone = ?
+     LIMIT 1`,
+    [normalizedEmail, normalizedPhone, normalizedEmail, normalizedPhone],
+    (emailErr, row) => {
     if (emailErr) {
       console.error('Signup email check error:', emailErr);
       return res.status(500).json({ success: false, message: 'Server error' });
     }
 
     if (row) {
+      if (row.duplicate_type === 'phone') {
+        return res.status(400).json({ success: false, message: 'Phone number already exists' });
+      }
       return res.status(400).json({ success: false, message: 'Email already exists' });
     }
 
@@ -598,7 +631,7 @@ app.post('/api/signup', (req, res) => {
       createUserAccount({
         name: String(name).trim(),
         email: normalizedEmail,
-        phone: String(phone).trim(),
+        phone: normalizedPhone,
         hashedPassword: hashPassword(password),
         referrerId: refResult || null
       }, req, res);
