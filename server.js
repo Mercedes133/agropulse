@@ -5,12 +5,16 @@ const session = require('express-session');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
 const REFERRAL_TARGET = 7;
 const REFERRAL_BONUS_AMOUNT = 50;
+const OTP_EXPIRY_MS = 10 * 60 * 1000;
+const OTP_RESEND_DELAY_MS = 60 * 1000;
+const pendingSignupOtps = new Map();
 
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
@@ -347,6 +351,122 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function getEmailTransporter() {
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT || 587);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !user || !pass) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass }
+  });
+}
+
+async function sendSignupOtpEmail({ email, name, otpCode }) {
+  const transporter = getEmailTransporter();
+  if (!transporter) {
+    throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and FROM_EMAIL.');
+  }
+
+  const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER;
+  await transporter.sendMail({
+    from: fromEmail,
+    to: email,
+    subject: 'Your Agro Pluse verification code',
+    text: `Hello ${name}, your Agro Pluse verification code is ${otpCode}. It expires in 10 minutes.`,
+    html: `<p>Hello ${name},</p><p>Your Agro Pluse verification code is:</p><h2 style="letter-spacing: 2px;">${otpCode}</h2><p>This code expires in 10 minutes.</p>`
+  });
+}
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function generateOtpCode() {
+  return String(Math.floor(100000 + (Math.random() * 900000)));
+}
+
+function clearExpiredSignupOtps() {
+  const now = Date.now();
+  pendingSignupOtps.forEach((entry, email) => {
+    if (!entry || entry.expiresAt <= now) {
+      pendingSignupOtps.delete(email);
+    }
+  });
+}
+
+function validateReferrer(referralCode, callback) {
+  const cleanedReferralCode = String(referralCode || '').trim().toUpperCase();
+  if (!cleanedReferralCode) {
+    return callback(null, null);
+  }
+
+  db.get(
+    `SELECT id FROM users WHERE UPPER(referral_code) = ?`,
+    [cleanedReferralCode],
+    (findErr, referrerRow) => {
+      if (findErr) {
+        return callback(findErr);
+      }
+      if (!referrerRow) {
+        return callback(null, 'INVALID_REFERRAL');
+      }
+      callback(null, referrerRow.id);
+    }
+  );
+}
+
+function createUserAccount({ name, email, phone, hashedPassword, referrerId }, req, res) {
+  db.run(
+    `INSERT INTO users (name, email, phone, password, status, referred_by) VALUES (?, ?, ?, ?, ?, ?)`,
+    [name, email, phone, hashedPassword, 'approved', referrerId || null],
+    function(err) {
+      if (err) {
+        console.error('Signup error:', err);
+        return res.json({ success: false, message: 'Email already exists' });
+      }
+
+      const newUserId = this.lastID;
+      const ownReferralCode = generateReferralCode(name, newUserId);
+
+      db.run(
+        `UPDATE users SET referral_code = ? WHERE id = ?`,
+        [ownReferralCode, newUserId],
+        (updateErr) => {
+          if (updateErr) {
+            console.error('Error setting referral code:', updateErr);
+          }
+
+          req.session.user = {
+            id: newUserId,
+            name,
+            email,
+            phone,
+            balance: 0
+          };
+
+          res.json({
+            success: true,
+            message: 'Signup successful',
+            user: req.session.user,
+            referral: {
+              referralCode: ownReferralCode,
+              referredBy: referrerId || null
+            }
+          });
+        }
+      );
+    }
+  );
+}
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'home.html'));
@@ -388,80 +508,96 @@ function hashPassword(password) {
 
 // API Routes
 app.post('/api/signup', (req, res) => {
+  const { email, otpCode } = req.body;
+  const normalizedEmail = normalizeEmail(email);
+  const cleanOtpCode = String(otpCode || '').trim();
+
+  if (!normalizedEmail || !cleanOtpCode) {
+    return res.status(400).json({ success: false, message: 'Email and OTP are required' });
+  }
+
+  clearExpiredSignupOtps();
+  const pending = pendingSignupOtps.get(normalizedEmail);
+
+  if (!pending) {
+    return res.status(400).json({ success: false, message: 'OTP session not found. Request a new OTP.' });
+  }
+
+  if (pending.expiresAt <= Date.now()) {
+    pendingSignupOtps.delete(normalizedEmail);
+    return res.status(400).json({ success: false, message: 'OTP expired. Request a new OTP.' });
+  }
+
+  if (hashPassword(cleanOtpCode) !== pending.otpHash) {
+    return res.status(400).json({ success: false, message: 'Invalid OTP code' });
+  }
+
+  pendingSignupOtps.delete(normalizedEmail);
+  createUserAccount({
+    name: pending.name,
+    email: pending.email,
+    phone: pending.phone,
+    hashedPassword: pending.hashedPassword,
+    referrerId: pending.referrerId
+  }, req, res);
+});
+
+app.post('/api/signup/request-otp', async (req, res) => {
   const { name, email, phone, password, referralCode } = req.body;
-  
-  // Validate input
-  if (!name || !email || !phone || !password) {
-    return res.json({ success: false, message: 'All fields are required' });
-  }
-  
-  const cleanedReferralCode = String(referralCode || '').trim().toUpperCase();
-  const hashedPassword = hashPassword(password);
+  const normalizedEmail = normalizeEmail(email);
 
-  const continueSignup = (referrerId) => {
-    db.run(
-      `INSERT INTO users (name, email, phone, password, status, referred_by) VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, email, phone, hashedPassword, 'approved', referrerId || null],
-      function(err) {
-        if (err) {
-          console.error('Signup error:', err);
-          return res.json({ success: false, message: 'Email already exists' });
-        }
-
-        const newUserId = this.lastID;
-        const ownReferralCode = generateReferralCode(name, newUserId);
-
-        db.run(
-          `UPDATE users SET referral_code = ? WHERE id = ?`,
-          [ownReferralCode, newUserId],
-          (updateErr) => {
-            if (updateErr) {
-              console.error('Error setting referral code:', updateErr);
-            }
-
-            req.session.user = {
-              id: newUserId,
-              name,
-              email,
-              phone,
-              balance: 0
-            };
-
-            res.json({
-              success: true,
-              message: 'Signup successful',
-              user: req.session.user,
-              referral: {
-                referralCode: ownReferralCode,
-                referredBy: referrerId || null
-              }
-            });
-          }
-        );
-      }
-    );
-  };
-
-  if (!cleanedReferralCode) {
-    return continueSignup(null);
+  if (!name || !normalizedEmail || !phone || !password) {
+    return res.status(400).json({ success: false, message: 'All fields are required' });
   }
 
-  db.get(
-    `SELECT id FROM users WHERE UPPER(referral_code) = ?`,
-    [cleanedReferralCode],
-    (findErr, referrerRow) => {
-      if (findErr) {
-        console.error('Referral lookup error:', findErr);
+  clearExpiredSignupOtps();
+  const existingEntry = pendingSignupOtps.get(normalizedEmail);
+  if (existingEntry && (Date.now() - existingEntry.requestedAt) < OTP_RESEND_DELAY_MS) {
+    return res.status(429).json({ success: false, message: 'Please wait 60 seconds before requesting a new OTP.' });
+  }
+
+  db.get(`SELECT id FROM users WHERE LOWER(email) = ?`, [normalizedEmail], async (emailErr, row) => {
+    if (emailErr) {
+      console.error('Signup email check error:', emailErr);
+      return res.status(500).json({ success: false, message: 'Server error' });
+    }
+
+    if (row) {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
+    }
+
+    validateReferrer(referralCode, async (refErr, refResult) => {
+      if (refErr) {
+        console.error('Referral lookup error:', refErr);
         return res.status(500).json({ success: false, message: 'Server error' });
       }
 
-      if (!referrerRow) {
+      if (refResult === 'INVALID_REFERRAL') {
         return res.status(400).json({ success: false, message: 'Invalid referral code' });
       }
 
-      continueSignup(referrerRow.id);
-    }
-  );
+      const otpCode = generateOtpCode();
+      const payload = {
+        name: String(name).trim(),
+        email: normalizedEmail,
+        phone: String(phone).trim(),
+        hashedPassword: hashPassword(password),
+        referrerId: refResult || null,
+        otpHash: hashPassword(otpCode),
+        expiresAt: Date.now() + OTP_EXPIRY_MS,
+        requestedAt: Date.now()
+      };
+
+      try {
+        await sendSignupOtpEmail({ email: normalizedEmail, name: payload.name, otpCode });
+        pendingSignupOtps.set(normalizedEmail, payload);
+        res.json({ success: true, message: 'OTP sent to your email. It expires in 10 minutes.' });
+      } catch (mailErr) {
+        console.error('OTP email error:', mailErr);
+        res.status(503).json({ success: false, message: mailErr.message || 'Unable to send OTP email right now.' });
+      }
+    });
+  });
 });
 
 app.post('/api/login', (req, res) => {
