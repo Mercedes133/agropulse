@@ -123,7 +123,7 @@
 
         function showMessage(message, isSuccess) {
             const msg = document.getElementById('form-message');
-            msg.textContent = message;
+            msg.innerHTML = message;
             msg.className = `text-sm mb-4 ${isSuccess ? 'text-green-600' : 'text-red-600'}`;
         }
 
@@ -187,7 +187,14 @@
                     document.getElementById('otp-step').classList.remove('hidden');
                     submitBtn.disabled = false;
                     submitBtn.textContent = 'Verify OTP & Create Account';
-                    showMessage(requestOtpData.message || 'OTP sent. Check your email.', true);
+                    
+                    // If test OTP is provided, show it prominently and auto-fill it
+                    let messageText = requestOtpData.message || 'OTP sent. Check your email.';
+                    if (requestOtpData.testOtp) {
+                        messageText += ` 🔐 <strong>Your test OTP is: ${requestOtpData.testOtp}</strong>`;
+                        document.getElementById('otp-code').value = requestOtpData.testOtp;
+                    }
+                    showMessage(messageText, true);
                     return;
                 }
 

@@ -379,8 +379,11 @@ function getEmailTransporter() {
 
 async function sendSignupOtpEmail({ email, name, otpCode }) {
   const transporter = getEmailTransporter();
+  
   if (!transporter) {
-    throw new Error('Email service is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and FROM_EMAIL.');
+    // Test mode: log the OTP for development/testing
+    console.warn(`🔐 TEST MODE: OTP for ${email} is: ${otpCode}`);
+    return { testMode: true, otpCode };
   }
 
   const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER;
@@ -391,6 +394,8 @@ async function sendSignupOtpEmail({ email, name, otpCode }) {
     text: `Hello ${name}, your Agro Pluse verification code is ${otpCode}. It expires in 10 minutes.`,
     html: `<p>Hello ${name},</p><p>Your Agro Pluse verification code is:</p><h2 style="letter-spacing: 2px;">${otpCode}</h2><p>This code expires in 10 minutes.</p>`
   });
+  
+  return { testMode: false };
 }
 
 async function sendWelcomeEmail({ email, name }) {
@@ -617,12 +622,21 @@ app.post('/api/signup/request-otp', async (req, res) => {
       };
 
       try {
-        await sendSignupOtpEmail({ email: normalizedEmail, name: payload.name, otpCode });
+        const emailResult = await sendSignupOtpEmail({ email: normalizedEmail, name: payload.name, otpCode });
         pendingSignupOtps.set(normalizedEmail, payload);
-        res.json({ success: true, message: 'OTP sent to your email. It expires in 10 minutes.' });
+        
+        const message = emailResult.testMode 
+          ? `TEST MODE: Your OTP is ${otpCode}. Use this code to verify your email.`
+          : 'OTP sent to your email. It expires in 10 minutes.';
+        
+        res.json({ 
+          success: true, 
+          message,
+          ...(emailResult.testMode && { testOtp: otpCode })
+        });
       } catch (mailErr) {
         console.error('OTP email error:', mailErr);
-        res.status(503).json({ success: false, message: mailErr.message || 'Unable to send OTP email right now.' });
+        res.status(503).json({ success: false, message: 'Unable to send OTP right now. Please try again.' });
       }
     });
   });
