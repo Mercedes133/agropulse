@@ -23,6 +23,14 @@
 
         <main class="p-6">
             <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold mb-4">Users Overview</h2>
+                <button onclick="loadUsersOverview()" class="bg-blue-800 text-white px-4 py-2 rounded mb-4">Refresh</button>
+                <div id="users-overview-list" class="space-y-4">
+                    <!-- Users overview will be listed here -->
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
                 <h2 class="text-xl font-bold mb-4">Pending Signups</h2>
                 <button onclick="loadPendingUsers()" class="bg-blue-800 text-white px-4 py-2 rounded mb-4">Refresh</button>
                 <div id="pending-list" class="space-y-4">
@@ -41,6 +49,76 @@
     </div>
 
     <script>
+        function formatCurrency(amount) {
+            return `GH₵ ${Number(amount || 0).toFixed(2)}`;
+        }
+
+        function formatJoinedDuration(dateValue) {
+            if (!dateValue) return 'Unknown';
+            const joinedDate = new Date(dateValue);
+            if (Number.isNaN(joinedDate.getTime())) return 'Unknown';
+
+            const now = new Date();
+            const diffMs = now - joinedDate;
+            const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+            if (diffDays < 1) return 'Today';
+            if (diffDays === 1) return '1 day';
+            if (diffDays < 30) return `${diffDays} days`;
+
+            const diffMonths = Math.floor(diffDays / 30);
+            if (diffMonths === 1) return '1 month';
+            if (diffMonths < 12) return `${diffMonths} months`;
+
+            const diffYears = Math.floor(diffMonths / 12);
+            return diffYears === 1 ? '1 year' : `${diffYears} years`;
+        }
+
+        function loadUsersOverview() {
+            fetch('/api/admin/users-overview')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('users-overview-list');
+                list.innerHTML = '';
+
+                const users = data.users || [];
+                if (users.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500">No users found.</p>';
+                    return;
+                }
+
+                users.forEach(user => {
+                    const userDiv = document.createElement('div');
+                    userDiv.className = 'border p-4 rounded';
+                    const joinedOn = user.created_at ? new Date(user.created_at).toLocaleString() : 'Unknown';
+                    const joinedDuration = formatJoinedDuration(user.created_at);
+                    userDiv.innerHTML = `
+                        <div class="grid md:grid-cols-2 gap-3">
+                            <div>
+                                <p><strong>Name:</strong> ${user.name || '-'}</p>
+                                <p><strong>Email:</strong> ${user.email || '-'}</p>
+                                <p><strong>Phone:</strong> ${user.phone || '-'}</p>
+                                <p><strong>Status:</strong> ${user.status || '-'}</p>
+                            </div>
+                            <div>
+                                <p><strong>Joined On:</strong> ${joinedOn}</p>
+                                <p><strong>Member For:</strong> ${joinedDuration}</p>
+                                <p><strong>Total Deposited:</strong> ${formatCurrency(user.total_deposited)}</p>
+                                <p><strong>Approved Deposits:</strong> ${formatCurrency(user.approved_total_deposited)}</p>
+                                <p><strong>Pending Deposits:</strong> ${formatCurrency(user.pending_total_deposited)}</p>
+                                <p><strong>Deposit Count:</strong> ${Number(user.deposit_count || 0)}</p>
+                            </div>
+                        </div>
+                    `;
+                    list.appendChild(userDiv);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('users-overview-list').innerHTML = '<p class="text-red-500">Failed to load users overview.</p>';
+            });
+        }
+
         // Load pending users
         function loadPendingUsers() {
             fetch('/api/pending')
@@ -187,6 +265,7 @@
 
         // Load on page load
         document.addEventListener('DOMContentLoaded', () => {
+            loadUsersOverview();
             loadPendingUsers();
             loadPendingDeposits();
         });

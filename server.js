@@ -54,7 +54,8 @@ db.serialize(() => {
     email TEXT UNIQUE,
     phone TEXT,
     password TEXT,
-    status TEXT DEFAULT 'approved'
+    status TEXT DEFAULT 'approved',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS deposits (
@@ -89,6 +90,7 @@ db.serialize(() => {
     const hasReferralCode = (columns || []).some((column) => column.name === 'referral_code');
     const hasReferredBy = (columns || []).some((column) => column.name === 'referred_by');
     const hasReferralBonusUnlocked = (columns || []).some((column) => column.name === 'referral_bonus_unlocked');
+    const hasCreatedAt = (columns || []).some((column) => column.name === 'created_at');
     if (!hasBalance) {
       db.run(`ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0`, (alterErr) => {
         if (alterErr) {
@@ -118,6 +120,20 @@ db.serialize(() => {
         if (alterErr) {
           console.error('Error adding users.referral_bonus_unlocked column:', alterErr);
         }
+      });
+    }
+
+    if (!hasCreatedAt) {
+      db.run(`ALTER TABLE users ADD COLUMN created_at TEXT`, (alterErr) => {
+        if (alterErr) {
+          console.error('Error adding users.created_at column:', alterErr);
+          return;
+        }
+        db.run(`UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`, (updateErr) => {
+          if (updateErr) {
+            console.error('Error backfilling users.created_at:', updateErr);
+          }
+        });
       });
     }
   });
@@ -454,7 +470,7 @@ function validateReferrer(referralCode, callback) {
 
 function createUserAccount({ name, email, phone, hashedPassword, referrerId }, req, res) {
   db.run(
-    `INSERT INTO users (name, email, phone, password, status, referred_by) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO users (name, email, phone, password, status, referred_by, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
     [name, email, phone, hashedPassword, 'approved', referrerId || null],
     function(err) {
       if (err) {
@@ -856,6 +872,35 @@ app.get('/api/admin/pending-deposits', (req, res) => {
         return res.status(500).json({ success: false, message: 'Server error', deposits: [] });
       }
       res.json({ success: true, deposits: rows || [] });
+    }
+  );
+});
+
+app.get('/api/admin/users-overview', (req, res) => {
+  db.all(
+    `SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.phone,
+        u.status,
+        u.created_at,
+        COUNT(d.id) AS deposit_count,
+        COALESCE(SUM(d.amount), 0) AS total_deposited,
+        COALESCE(SUM(CASE WHEN d.status = 'approved' THEN d.amount ELSE 0 END), 0) AS approved_total_deposited,
+        COALESCE(SUM(CASE WHEN d.status = 'pending' THEN d.amount ELSE 0 END), 0) AS pending_total_deposited,
+        MAX(d.created_at) AS last_deposit_at
+     FROM users u
+     LEFT JOIN deposits d ON d.user_id = u.id
+     GROUP BY u.id, u.name, u.email, u.phone, u.status, u.created_at
+     ORDER BY u.id DESC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        console.error('Error loading admin users overview:', err);
+        return res.status(500).json({ success: false, message: 'Server error', users: [] });
+      }
+      res.json({ success: true, users: rows || [] });
     }
   );
 });
