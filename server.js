@@ -2,6 +2,8 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const session = require('express-session');
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -24,7 +26,38 @@ const REFERRAL_TARGET = 7;
 const REFERRAL_BONUS_AMOUNT = 50;
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 const OTP_RESEND_DELAY_MS = 60 * 1000;
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 12);
 const pendingSignupOtps = new Map();
+
+const LOGS_DIR = path.join(__dirname, 'logs');
+const SECURITY_LOG_PATH = path.join(LOGS_DIR, 'security.log');
+if (!fs.existsSync(LOGS_DIR)) {
+  fs.mkdirSync(LOGS_DIR, { recursive: true });
+}
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return String(forwarded).split(',')[0].trim();
+  }
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function writeSecurityLog(event, req, details = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    event,
+    ip: getClientIp(req),
+    path: req.path,
+    method: req.method,
+    details
+  };
+  fs.appendFile(SECURITY_LOG_PATH, `${JSON.stringify(entry)}\n`, (err) => {
+    if (err) {
+      console.error('Failed to write security log:', err.message);
+    }
+  });
+}
 
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
@@ -76,6 +109,7 @@ app.use((req, res, next) => {
 
   const authHeader = String(req.headers.authorization || '');
   if (!authHeader.startsWith('Basic ')) {
+    writeSecurityLog('admin_auth_missing', req);
     res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
     return res.status(401).send('Authentication required');
   }
@@ -88,10 +122,13 @@ app.use((req, res, next) => {
     const password = separatorIndex >= 0 ? credentials.slice(separatorIndex + 1) : '';
 
     if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+      writeSecurityLog('admin_auth_failed', req, { username });
       res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
       return res.status(401).send('Invalid admin credentials');
     }
+    writeSecurityLog('admin_auth_success', req, { username });
   } catch (error) {
+    writeSecurityLog('admin_auth_header_invalid', req);
     res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
     return res.status(401).send('Invalid authentication header');
   }
@@ -756,12 +793,43 @@ app.get('/website', (req, res) => {
 
 // Helper: Hash password
 function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
+  return bcrypt.hashSync(String(password || ''), BCRYPT_ROUNDS);
+}
+
+function isBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$/.test(String(value || ''));
+}
+
+function verifyPassword(plainPassword, storedHash) {
+  const plain = String(plainPassword || '');
+  const stored = String(storedHash || '');
+
+  if (!plain || !stored) {
+    return false;
+  }
+
+  if (isBcryptHash(stored)) {
+    return bcrypt.compareSync(plain, stored);
+  }
+
+  const legacyHash = crypto.createHash('sha256').update(plain).digest('hex');
+  return legacyHash === stored;
 }
 
 function isStrongPassword(password) {
   return /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(String(password || ''));
 }
+
+const loginRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    writeSecurityLog('login_rate_limited', req);
+    return res.status(429).json({ success: false, message: 'Too many login attempts. Please try again in 10 minutes.' });
+  }
+});
 
 // API Routes
 app.post('/api/signup', (req, res) => {
@@ -826,7 +894,7 @@ app.post('/api/signup', (req, res) => {
   });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', loginRateLimiter, (req, res) => {
   const { email, password } = req.body;
   const identifier = String(email || '').trim();
   const normalizedEmail = normalizeEmail(identifier);
@@ -839,26 +907,36 @@ app.post('/api/login', (req, res) => {
     return res.json({ success: false, message: 'Email and password required' });
   }
 
-  const loginWithPassword = (passwordValue, callback) => {
-    const hashedPassword = hashPassword(passwordValue);
-
-    db.get(
-      `SELECT *
-       FROM users
-       WHERE (LOWER(email) = ? OR phone IN (?, ?, ?))
-         AND password = ?
-         AND status = 'approved'`,
-      [normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3, hashedPassword],
-      callback
-    );
-  };
-
-  loginWithPassword(rawPassword, (err, row) => {
+  db.get(
+    `SELECT *
+     FROM users
+     WHERE (LOWER(email) = ? OR phone IN (?, ?, ?))
+       AND status = 'approved'`,
+    [normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3],
+    (err, row) => {
       if (err) {
         console.error('Login error:', err);
+        writeSecurityLog('login_error', req, { identifier });
         return res.json({ success: false, message: 'Server error' });
       }
-      if (row) {
+
+      const validRaw = row ? verifyPassword(rawPassword, row.password) : false;
+      const validTrimmed = !validRaw && trimmedPassword && trimmedPassword !== rawPassword
+        ? verifyPassword(trimmedPassword, row.password)
+        : false;
+
+      if (row && (validRaw || validTrimmed)) {
+        const passwordUsed = validRaw ? rawPassword : trimmedPassword;
+
+        if (!isBcryptHash(row.password)) {
+          const upgradedHash = hashPassword(passwordUsed);
+          db.run(`UPDATE users SET password = ? WHERE id = ?`, [upgradedHash, row.id], (updateErr) => {
+            if (updateErr) {
+              console.error('Password migration error:', updateErr);
+            }
+          });
+        }
+
         req.session.user = {
           id: row.id,
           name: row.name,
@@ -866,33 +944,14 @@ app.post('/api/login', (req, res) => {
           phone: row.phone,
           balance: Number(row.balance || 0)
         };
+        writeSecurityLog('login_success', req, { userId: row.id, email: row.email });
         return res.json({ success: true, message: 'Login successful', user: req.session.user });
       }
 
-      if (trimmedPassword && trimmedPassword !== rawPassword) {
-        return loginWithPassword(trimmedPassword, (retryErr, retryRow) => {
-          if (retryErr) {
-            console.error('Login retry error:', retryErr);
-            return res.json({ success: false, message: 'Server error' });
-          }
-
-          if (retryRow) {
-            req.session.user = {
-              id: retryRow.id,
-              name: retryRow.name,
-              email: retryRow.email,
-              phone: retryRow.phone,
-              balance: Number(retryRow.balance || 0)
-            };
-            return res.json({ success: true, message: 'Login successful', user: req.session.user });
-          }
-
-          return res.json({ success: false, message: 'Invalid credentials or not approved' });
-        });
-      }
-
+      writeSecurityLog('login_failed', req, { identifier });
       return res.json({ success: false, message: 'Invalid credentials or not approved' });
-    });
+    }
+  );
 });
 
 app.get('/api/me', (req, res) => {
