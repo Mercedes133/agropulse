@@ -112,14 +112,25 @@
         document.getElementById('login-form').addEventListener('submit', function(e) {
             e.preventDefault();
             const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value.replace(/\r?\n/g, '').trim();
+            const password = document.getElementById('password').value.replace(/\r?\n/g, '');
 
             fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password })
             })
-            .then(response => response.json())
+            .then(async (response) => {
+                let data = {};
+                try {
+                    data = await response.json();
+                } catch (error) {
+                    data = { success: false, message: 'Unexpected server response' };
+                }
+                if (!response.ok && !data.message) {
+                    data.message = `Login failed (HTTP ${response.status})`;
+                }
+                return data;
+            })
             .then(data => {
                 if (data.success) {
                     showMessage('Login successful. Redirecting...', true);
