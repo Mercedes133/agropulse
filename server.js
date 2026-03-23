@@ -59,6 +59,33 @@ function writeSecurityLog(event, req, details = {}) {
   });
 }
 
+function readRecentSecurityLogs(limit = 100) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  if (!fs.existsSync(SECURITY_LOG_PATH)) {
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(SECURITY_LOG_PATH, 'utf8');
+    const lines = content.split('\n').map((line) => line.trim()).filter(Boolean);
+    const recentLines = lines.slice(-safeLimit);
+
+    return recentLines
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .reverse();
+  } catch (error) {
+    console.error('Failed to read security logs:', error.message);
+    return [];
+  }
+}
+
 if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
@@ -1221,6 +1248,17 @@ app.get('/api/admin/users-overview', (req, res) => {
       res.json({ success: true, users: rows || [] });
     }
   );
+});
+
+app.get('/api/admin/security-logs', (req, res) => {
+  const limit = Number(req.query.limit || 100);
+  const logs = readRecentSecurityLogs(limit);
+  res.json({
+    success: true,
+    logPath: SECURITY_LOG_PATH,
+    count: logs.length,
+    logs
+  });
 });
 
 app.post('/api/admin/approve-deposit/:id', (req, res) => {

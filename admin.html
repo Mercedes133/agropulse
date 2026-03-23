@@ -46,6 +46,17 @@
                     <!-- Pending deposits will be listed here -->
                 </div>
             </div>
+
+            <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <h2 class="text-xl font-bold mb-4">Security Logs</h2>
+                <div class="flex flex-col md:flex-row gap-3 mb-4">
+                    <button onclick="loadSecurityLogs()" class="bg-blue-800 text-white px-4 py-2 rounded">Refresh Logs</button>
+                    <input id="security-logs-filter" type="text" placeholder="Filter by event, IP, path, method, user" class="w-full border border-gray-300 rounded px-3 py-2">
+                </div>
+                <div id="security-logs-list" class="space-y-3">
+                    <!-- Security logs will be listed here -->
+                </div>
+            </div>
         </main>
     </div>
 
@@ -280,12 +291,63 @@
             });
         }
 
+        function loadSecurityLogs() {
+            fetch('/api/admin/security-logs?limit=200')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('security-logs-list');
+                list.innerHTML = '';
+
+                const filterValue = (document.getElementById('security-logs-filter').value || '').toLowerCase().trim();
+                const logs = (data.logs || []).filter((entry) => {
+                    if (!filterValue) return true;
+                    const searchable = [
+                        entry.event,
+                        entry.ip,
+                        entry.path,
+                        entry.method,
+                        JSON.stringify(entry.details || {})
+                    ].map((v) => String(v || '').toLowerCase()).join(' ');
+                    return searchable.includes(filterValue);
+                });
+
+                if (logs.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500">No security logs yet.</p>';
+                    return;
+                }
+
+                logs.forEach((entry) => {
+                    const row = document.createElement('div');
+                    row.className = 'border rounded p-3 bg-slate-50';
+                    const when = entry.ts ? new Date(entry.ts).toLocaleString() : 'Unknown time';
+                    const details = entry.details && Object.keys(entry.details).length
+                        ? JSON.stringify(entry.details)
+                        : '-';
+
+                    row.innerHTML = `
+                        <p><strong>Time:</strong> ${when}</p>
+                        <p><strong>Event:</strong> ${entry.event || '-'}</p>
+                        <p><strong>IP:</strong> ${entry.ip || '-'}</p>
+                        <p><strong>Method/Path:</strong> ${(entry.method || '-')} ${(entry.path || '-')}</p>
+                        <p><strong>Details:</strong> ${details}</p>
+                    `;
+                    list.appendChild(row);
+                });
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                document.getElementById('security-logs-list').innerHTML = '<p class="text-red-500">Failed to load security logs.</p>';
+            });
+        }
+
         // Load on page load
         document.addEventListener('DOMContentLoaded', () => {
             loadUsersOverview();
             loadPendingUsers();
             loadPendingDeposits();
+            loadSecurityLogs();
             document.getElementById('pending-deposits-filter').addEventListener('input', loadPendingDeposits);
+            document.getElementById('security-logs-filter').addEventListener('input', loadSecurityLogs);
         });
     </script>
 </body>
