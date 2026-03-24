@@ -2,6 +2,7 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
 const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
@@ -16,6 +17,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const SESSION_SECRET = process.env.SESSION_SECRET || (!IS_PRODUCTION ? 'agropluse_dev_secret_change_me' : '');
 const DEFAULT_ADMIN_USERNAME = 'mercedes133';
 const DEFAULT_ADMIN_PASSWORD = 'Dacosta133@';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || (!IS_PRODUCTION ? DEFAULT_ADMIN_USERNAME : '');
@@ -33,13 +35,64 @@ const REFERRAL_BONUS_AMOUNT = 50;
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 const OTP_RESEND_DELAY_MS = 60 * 1000;
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS || 12);
+const SESSION_DB_NAME = process.env.SESSION_DB_NAME || 'sessions.db';
+const DUPLICATE_IDENTIFIER_MESSAGE = 'This email or phone number has already been used. Please use a different one or log in instead.';
 const pendingSignupOtps = new Map();
+
+function resolveStoragePath(targetPath) {
+  if (!targetPath) {
+    return __dirname;
+  }
+
+  return path.isAbsolute(targetPath) ? targetPath : path.resolve(__dirname, targetPath);
+}
+
+const RESOLVED_DATABASE_PATH = resolveStoragePath(DATABASE_PATH);
+const DATA_DIRECTORY = path.dirname(RESOLVED_DATABASE_PATH);
+const BACKUPS_DIRECTORY = path.join(DATA_DIRECTORY, 'backups');
 
 const LOGS_DIR = path.join(__dirname, 'logs');
 const SECURITY_LOG_PATH = path.join(LOGS_DIR, 'security.log');
 if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
+if (!fs.existsSync(DATA_DIRECTORY)) {
+  fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
+}
+
+if (!SESSION_SECRET) {
+  throw new Error('SESSION_SECRET must be configured in production to keep authentication secure across updates.');
+}
+
+function backupExistingDatabase() {
+  if (!fs.existsSync(RESOLVED_DATABASE_PATH)) {
+    return;
+  }
+
+  fs.mkdirSync(BACKUPS_DIRECTORY, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[.:]/g, '-');
+  const backupPath = path.join(BACKUPS_DIRECTORY, `users-${timestamp}.db`);
+  fs.copyFileSync(RESOLVED_DATABASE_PATH, backupPath);
+
+  const backupFiles = fs.readdirSync(BACKUPS_DIRECTORY)
+    .filter((fileName) => /^users-.*\.db$/.test(fileName))
+    .map((fileName) => ({
+      fileName,
+      fullPath: path.join(BACKUPS_DIRECTORY, fileName),
+      mtimeMs: fs.statSync(path.join(BACKUPS_DIRECTORY, fileName)).mtimeMs
+    }))
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+
+  backupFiles.slice(10).forEach((backupFile) => {
+    try {
+      fs.unlinkSync(backupFile.fullPath);
+    } catch (error) {
+      console.error('Failed to prune old database backup:', error.message);
+    }
+  });
+}
+
+backupExistingDatabase();
 
 function getClientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
@@ -129,7 +182,13 @@ app.use((req, res, next) => {
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'agropluse_dev_secret_change_me',
+  store: new SQLiteStore({
+    db: SESSION_DB_NAME,
+    dir: DATA_DIRECTORY,
+    concurrentDB: true
+  }),
+  name: 'agropluse.sid',
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -189,13 +248,93 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname)));
 
 // Database setup
-const dbDir = path.dirname(DATABASE_PATH);
-if (dbDir && dbDir !== '.') {
-  fs.mkdirSync(dbDir, { recursive: true });
+const db = new sqlite3.Database(RESOLVED_DATABASE_PATH);
+
+function normalizeExistingUserPhones(callback) {
+  db.all(`SELECT id, phone FROM users WHERE phone IS NOT NULL AND TRIM(phone) <> ''`, [], (scanErr, rows) => {
+    if (scanErr) {
+      console.error('Error scanning user phone numbers:', scanErr);
+      return callback();
+    }
+
+    const updates = (rows || []).filter((row) => {
+      const normalizedPhone = normalizePhone(row.phone);
+      return normalizedPhone && normalizedPhone !== String(row.phone);
+    });
+
+    if (!updates.length) {
+      return callback();
+    }
+
+    let pending = updates.length;
+    updates.forEach((row) => {
+      const normalizedPhone = normalizePhone(row.phone);
+      db.run(`UPDATE users SET phone = ? WHERE id = ?`, [normalizedPhone, row.id], (updateErr) => {
+        if (updateErr) {
+          console.error(`Error normalizing phone for user ${row.id}:`, updateErr);
+        }
+
+        pending -= 1;
+        if (pending === 0) {
+          callback();
+        }
+      });
+    });
+  });
 }
-const db = new sqlite3.Database(DATABASE_PATH);
+
+function reportDuplicateUserIdentifiers() {
+  db.all(
+    `SELECT 'email' AS field, LOWER(email) AS normalized_value, COUNT(*) AS duplicate_count
+     FROM users
+     WHERE email IS NOT NULL AND TRIM(email) <> ''
+     GROUP BY LOWER(email)
+     HAVING COUNT(*) > 1
+     UNION ALL
+     SELECT 'phone' AS field, phone AS normalized_value, COUNT(*) AS duplicate_count
+     FROM users
+     WHERE phone IS NOT NULL AND TRIM(phone) <> ''
+     GROUP BY phone
+     HAVING COUNT(*) > 1`,
+    [],
+    (err, rows) => {
+      if (err) {
+        console.error('Error checking duplicate user identifiers:', err);
+        return;
+      }
+
+      (rows || []).forEach((row) => {
+        console.error(`Duplicate user ${row.field} detected for value ${row.normalized_value}. Existing records were preserved and require manual cleanup before strict indexing can be applied.`);
+      });
+    }
+  );
+}
+
+function ensureUserIdentityIndexes() {
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_normalized ON users(LOWER(email))`, (emailIndexErr) => {
+    if (emailIndexErr) {
+      console.error('Failed to enforce unique email identity:', emailIndexErr.message);
+    }
+  });
+
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_normalized ON users(phone) WHERE phone IS NOT NULL AND TRIM(phone) <> ''`, (phoneIndexErr) => {
+    if (phoneIndexErr) {
+      console.error('Failed to enforce unique phone identity:', phoneIndexErr.message);
+    }
+  });
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_lookup_email_phone ON users(LOWER(email), phone)`, (lookupIndexErr) => {
+    if (lookupIndexErr) {
+      console.error('Failed to create user lookup index:', lookupIndexErr.message);
+    }
+  });
+}
 
 db.serialize(() => {
+  db.run(`PRAGMA foreign_keys = ON`);
+  db.run(`PRAGMA busy_timeout = 5000`);
+  db.run(`PRAGMA journal_mode = WAL`);
+
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
@@ -380,24 +519,9 @@ db.serialize(() => {
     }
   });
 
-  db.all(`SELECT id, phone FROM users WHERE phone IS NOT NULL AND TRIM(phone) <> ''`, [], (scanErr, rows) => {
-    if (scanErr) {
-      console.error('Error scanning user phone numbers:', scanErr);
-      return;
-    }
-
-    (rows || []).forEach((row) => {
-      const normalizedPhone = normalizePhone(row.phone);
-      if (!normalizedPhone || normalizedPhone === String(row.phone)) {
-        return;
-      }
-
-      db.run(`UPDATE users SET phone = ? WHERE id = ?`, [normalizedPhone, row.id], (updateErr) => {
-        if (updateErr) {
-          console.error(`Error normalizing phone for user ${row.id}:`, updateErr);
-        }
-      });
-    });
+  normalizeExistingUserPhones(() => {
+    reportDuplicateUserIdentifiers();
+    ensureUserIdentityIndexes();
   });
 });
 
@@ -854,7 +978,10 @@ function createUserAccount({ name, email, phone, hashedPassword, referrerId }, r
     function(err) {
       if (err) {
         console.error('Signup error:', err);
-        return res.json({ success: false, message: 'Email already exists' });
+        if (err.code === 'SQLITE_CONSTRAINT') {
+          return res.status(400).json({ success: false, message: DUPLICATE_IDENTIFIER_MESSAGE });
+        }
+        return res.status(500).json({ success: false, message: 'Server error' });
       }
 
       const newUserId = this.lastID;
@@ -1007,10 +1134,7 @@ app.post('/api/signup', (req, res) => {
     }
 
     if (row) {
-      if (row.duplicate_type === 'phone') {
-        return res.status(400).json({ success: false, message: 'Phone number already exists' });
-      }
-      return res.status(400).json({ success: false, message: 'Email already exists' });
+      return res.status(400).json({ success: false, message: DUPLICATE_IDENTIFIER_MESSAGE });
     }
 
     validateReferrer(referralCode, (refErr, refResult) => {
