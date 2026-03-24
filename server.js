@@ -349,6 +349,26 @@ function getClientIp(req) {
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
+function getLoginIdentifier(input) {
+  const identifier = String(input || '').trim();
+  if (!identifier) {
+    return 'unknown';
+  }
+
+  const normalizedEmail = normalizeEmail(identifier);
+  if (normalizedEmail.includes('@')) {
+    return normalizedEmail;
+  }
+
+  const normalizedPhone = normalizePhone(identifier);
+  return normalizedPhone || normalizedEmail || identifier.toLowerCase();
+}
+
+function getLoginRateLimitKey(req, identifierOverride) {
+  const identifier = getLoginIdentifier(identifierOverride || req.body?.email || '');
+  return `${getClientIp(req)}:${identifier}`;
+}
+
 function writeSecurityLog(event, req, details = {}) {
   const entry = {
     ts: new Date().toISOString(),
@@ -1394,6 +1414,7 @@ function isStrongPassword(password) {
 const loginRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
+  keyGenerator: (req) => getLoginRateLimitKey(req),
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
@@ -1475,6 +1496,7 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
   const [phoneVariant1, phoneVariant2, phoneVariant3] = getPhoneLookupVariants(identifier);
   const rawPassword = String(password || '');
   const trimmedPassword = rawPassword.trim();
+  const limiterKey = getLoginRateLimitKey(req, identifier);
   
   // Validate input
   if (!identifier || !rawPassword) {
@@ -1484,12 +1506,17 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
     return res.json({ success: false, message: 'Email and password required' });
   }
 
-  db.get(
+  db.all(
     `SELECT *
      FROM users
-     WHERE (LOWER(email) = ? OR phone IN (?, ?, ?))`,
-    [normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3],
-    (err, row) => {
+     WHERE LOWER(email) = ? OR phone IN (?, ?, ?)
+     ORDER BY
+       CASE WHEN LOWER(email) = ? THEN 0 ELSE 1 END,
+       CASE WHEN status = 'approved' THEN 0 ELSE 1 END,
+       datetime(created_at) DESC,
+       id DESC`,
+    [normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3, normalizedEmail],
+    (err, rows) => {
       if (err) {
         console.error('Login error:', err);
         writeSecurityLog('login_error', req, { identifier });
@@ -1498,39 +1525,52 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
         return res.json({ success: false, message: 'Server error' });
       }
 
-      if (!row) {
+      const candidates = Array.isArray(rows) ? rows : [];
+
+      if (!candidates.length) {
         writeSecurityLog('login_failed_no_user', req, { identifier });
         db.run(`INSERT INTO login_history (email, ip_address, success, reason) VALUES (?, ?, ?, ?)`,
           [identifier, getClientIp(req), 0, 'User not found']);
         return res.json({ success: false, message: 'Invalid credentials or not approved' });
       }
 
-      if (row.status !== 'approved') {
-        writeSecurityLog('login_failed_not_approved', req, { userId: row.id, email: row.email, status: row.status });
+      let matchedRow = null;
+      let passwordUsed = '';
+
+      for (const row of candidates) {
+        const rawPasswordValid = verifyPassword(rawPassword, row.password);
+        const trimmedPasswordValid = !rawPasswordValid
+          && trimmedPassword
+          && trimmedPassword !== rawPassword
+          && verifyPassword(trimmedPassword, row.password);
+
+        if (rawPasswordValid || trimmedPasswordValid) {
+          matchedRow = row;
+          passwordUsed = rawPasswordValid ? rawPassword : trimmedPassword;
+          break;
+        }
+      }
+
+      if (!matchedRow) {
+        const primaryRow = candidates[0];
+        writeSecurityLog('login_failed_invalid_password', req, { userId: primaryRow.id, email: primaryRow.email });
         db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
-          [row.id, row.email, getClientIp(req), 0, `Not approved (status: ${row.status})`]);
+          [primaryRow.id, primaryRow.email, getClientIp(req), 0, 'Invalid password']);
+        console.error('Password verification failed for user:', identifier);
         return res.json({ success: false, message: 'Invalid credentials or not approved' });
       }
 
-      const rawPasswordValid = verifyPassword(rawPassword, row.password);
-      const trimmedPasswordValid = !rawPasswordValid
-        && trimmedPassword
-        && trimmedPassword !== rawPassword
-        && verifyPassword(trimmedPassword, row.password);
-      const passwordUsed = rawPasswordValid ? rawPassword : (trimmedPasswordValid ? trimmedPassword : '');
-      
-      if (!passwordUsed) {
-        writeSecurityLog('login_failed_invalid_password', req, { userId: row.id, email: row.email });
+      if (matchedRow.status !== 'approved') {
+        writeSecurityLog('login_failed_not_approved', req, { userId: matchedRow.id, email: matchedRow.email, status: matchedRow.status });
         db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
-          [row.id, row.email, getClientIp(req), 0, 'Invalid password']);
-        console.error('Password verification failed for user:', row.email);
+          [matchedRow.id, matchedRow.email, getClientIp(req), 0, `Not approved (status: ${matchedRow.status})`]);
         return res.json({ success: false, message: 'Invalid credentials or not approved' });
       }
 
       // Password upgrade if needed
-      if (!isBcryptHash(row.password)) {
+      if (!isBcryptHash(matchedRow.password)) {
         const upgradedHash = hashPassword(passwordUsed);
-        db.run(`UPDATE users SET password = ? WHERE id = ?`, [upgradedHash, row.id], (updateErr) => {
+        db.run(`UPDATE users SET password = ? WHERE id = ?`, [upgradedHash, matchedRow.id], (updateErr) => {
           if (updateErr) {
             console.error('Password migration error:', updateErr);
           }
@@ -1539,16 +1579,20 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
 
       // Login successful
       req.session.user = {
-        id: row.id,
-        name: row.name,
-        email: row.email,
-        phone: row.phone,
-        balance: Number(row.balance || 0)
+        id: matchedRow.id,
+        name: matchedRow.name,
+        email: matchedRow.email,
+        phone: matchedRow.phone,
+        balance: Number(matchedRow.balance || 0)
       };
+
+      if (typeof loginRateLimiter.resetKey === 'function') {
+        loginRateLimiter.resetKey(limiterKey);
+      }
       
-      writeSecurityLog('login_success', req, { userId: row.id, email: row.email });
+      writeSecurityLog('login_success', req, { userId: matchedRow.id, email: matchedRow.email });
       db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
-        [row.id, row.email, getClientIp(req), 1, 'Successful login']);
+        [matchedRow.id, matchedRow.email, getClientIp(req), 1, 'Successful login']);
       
       return res.json({ success: true, message: 'Login successful', user: req.session.user });
     }
