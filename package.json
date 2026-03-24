@@ -4,7 +4,10 @@
   "description": "Agro Pluse investment platform",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check:syntax": "node --check server.js",
+    "check:startup": "node scripts/startup-check.js",
+    "verify": "npm run check:syntax && npm run check:startup"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

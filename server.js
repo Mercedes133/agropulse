@@ -18,6 +18,8 @@ const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SESSION_SECRET = process.env.SESSION_SECRET || (!IS_PRODUCTION ? 'agropluse_dev_secret_change_me' : '');
+const KNOWN_INSECURE_ADMIN_USERNAME = 'mercedes133';
+const KNOWN_INSECURE_ADMIN_PASSWORD = 'Dacosta133@';
 function isUnsetEnvValue(value) {
   const normalized = String(value || '').trim().toUpperCase();
   return !normalized || normalized === 'CHANGE_ME' || normalized === 'CHANGEME' || normalized === 'TODO';
@@ -28,12 +30,10 @@ function readConfiguredEnvValue(key) {
   return isUnsetEnvValue(raw) ? '' : String(raw).trim();
 }
 
-const DEFAULT_ADMIN_USERNAME = 'mercedes133';
-const DEFAULT_ADMIN_PASSWORD = 'Dacosta133@';
-const ADMIN_USERNAME = readConfiguredEnvValue('ADMIN_USERNAME') || (!IS_PRODUCTION ? DEFAULT_ADMIN_USERNAME : '');
-const ADMIN_PASSWORD = readConfiguredEnvValue('ADMIN_PASSWORD') || (!IS_PRODUCTION ? DEFAULT_ADMIN_PASSWORD : '');
+const ADMIN_USERNAME = readConfiguredEnvValue('ADMIN_USERNAME');
+const ADMIN_PASSWORD = readConfiguredEnvValue('ADMIN_PASSWORD');
 const ADMIN_CONFIGURED = Boolean(ADMIN_USERNAME && ADMIN_PASSWORD);
-const ADMIN_USING_DEFAULTS = ADMIN_USERNAME === DEFAULT_ADMIN_USERNAME && ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD;
+const ADMIN_USING_DEFAULTS = ADMIN_USERNAME === KNOWN_INSECURE_ADMIN_USERNAME && ADMIN_PASSWORD === KNOWN_INSECURE_ADMIN_PASSWORD;
 
 // Paystack configuration — swap in your live keys when ready
 const PAYSTACK_SECRET_KEY = readConfiguredEnvValue('PAYSTACK_SECRET_KEY');
@@ -77,8 +77,53 @@ if (!fs.existsSync(DATA_DIRECTORY)) {
   fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
 }
 
-if (!SESSION_SECRET) {
-  throw new Error('SESSION_SECRET must be configured in production to keep authentication secure across updates.');
+function runStartupChecks() {
+  const errors = [];
+  const warnings = [];
+
+  if (!SESSION_SECRET) {
+    errors.push('SESSION_SECRET must be configured in production to keep authentication secure across updates.');
+  }
+
+  if (IS_PRODUCTION && SESSION_SECRET.length < 32) {
+    errors.push('SESSION_SECRET must be at least 32 characters in production.');
+  }
+
+  if (BCRYPT_ROUNDS < 10) {
+    warnings.push('BCRYPT_ROUNDS is below 10. Increase it to at least 10 for stronger password hashing.');
+  }
+
+  if (!ADMIN_CONFIGURED) {
+    warnings.push('Admin credentials are not configured. Admin routes will remain disabled until ADMIN_USERNAME and ADMIN_PASSWORD are set.');
+  }
+
+  if (ADMIN_USING_DEFAULTS) {
+    errors.push('Known insecure admin credentials are configured. Set unique ADMIN_USERNAME and ADMIN_PASSWORD values.');
+  }
+
+  if (IS_PRODUCTION && !PAYSTACK_SECRET_KEY) {
+    warnings.push('PAYSTACK_SECRET_KEY is not set. Payment initiation endpoints will be unavailable.');
+  }
+
+  if (PAYSTACK_PUBLIC_KEY && !PAYSTACK_SECRET_KEY) {
+    warnings.push('PAYSTACK_PUBLIC_KEY is configured without PAYSTACK_SECRET_KEY. Configure both keys together.');
+  }
+
+  try {
+    fs.accessSync(DATA_DIRECTORY, fs.constants.R_OK | fs.constants.W_OK);
+  } catch (error) {
+    errors.push(`DATA_DIRECTORY is not writable: ${DATA_DIRECTORY}`);
+  }
+
+  return { errors, warnings };
+}
+
+const startupValidation = runStartupChecks();
+startupValidation.warnings.forEach((warning) => {
+  console.warn(`[startup-check] ${warning}`);
+});
+if (startupValidation.errors.length > 0) {
+  throw new Error(`[startup-check] ${startupValidation.errors.join(' | ')}`);
 }
 
 function backupExistingDatabase() {
@@ -859,7 +904,12 @@ const INVESTMENT_PLANS = [
   { id: 'poultry-starter', name: 'Poultry Starter', minDeposit: 20, payoutMultiplier: 7, payoutDays: 7 },
   { id: 'boer-goat', name: 'Boer Goat', minDeposit: 100, payoutMultiplier: 7, payoutDays: 7 },
   { id: 'eggs', name: 'Eggs', minDeposit: 50, payoutMultiplier: 7, payoutDays: 7 },
-  { id: 'dairy-cow', name: 'Dairy Cow', minDeposit: 300, payoutMultiplier: 7, payoutDays: 7 }
+  { id: 'dairy-cow', name: 'Dairy Cow', minDeposit: 300, payoutMultiplier: 7, payoutDays: 7 },
+  { id: 'maize-farm', name: 'Maize Farm', minDeposit: 150, payoutMultiplier: 7, payoutDays: 7 },
+  { id: 'tilapia-pond', name: 'Tilapia Pond', minDeposit: 500, payoutMultiplier: 7, payoutDays: 7 },
+  { id: 'catfish-pond', name: 'Catfish Pond', minDeposit: 500, payoutMultiplier: 2, payoutDays: 7 },
+  { id: 'piggery-expansion', name: 'Piggery Expansion', minDeposit: 700, payoutMultiplier: 2, payoutDays: 7 },
+  { id: 'greenhouse-vegetables', name: 'Greenhouse Vegetables', minDeposit: 1000, payoutMultiplier: 2, payoutDays: 7 }
 ];
 
 function calculatePlanPayout(amount, plan) {

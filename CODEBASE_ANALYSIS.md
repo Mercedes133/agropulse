@@ -4,7 +4,19 @@
 **Date:** March 23, 2026  
 **Project:** Agro Pluse - Agricultural Investment Platform  
 **Stack:** Node.js/Express, SQLite, Vanilla JS, Tailwind CSS  
-**Status:** Early-stage MVP with significant gaps
+**Status:** Historical report (see March 24 update below)
+
+---
+
+## March 24, 2026 Status Update
+
+- Admin authentication middleware is active for `/admin`, `/api/admin/*`, and legacy admin endpoints.
+- Withdrawal request workflow is implemented (user submit, admin approve/reject, deposit status update to `withdrawn`).
+- Rate limiting, bcrypt password hashing, helmet security headers, and security logging are already in use.
+- Health endpoint exists at `/health` and deployment config includes Render health checks and persistent disk settings.
+- Remaining production-critical work is mostly operational: setting strong env secrets, rotating credentials, and live payment/provider validation.
+
+> Note: Sections below are retained as a historical audit snapshot and may not reflect all latest code changes.
 
 ---
 
