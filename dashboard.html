@@ -61,6 +61,42 @@
                 </div>
             </section>
 
+            <section id="active-investment-card" class="hidden bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 rounded-2xl p-6 shadow-sm text-white">
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+                    <div>
+                        <p class="text-sm font-semibold text-emerald-100 mb-2">Investment Active</p>
+                        <h2 class="text-2xl font-bold mb-2">Your investment has started successfully</h2>
+                        <p id="active-investment-message" class="text-sm text-emerald-50">Your investment is now running and earning daily.</p>
+                    </div>
+                    <div class="bg-white/15 border border-white/20 rounded-xl px-4 py-3 min-w-[180px]">
+                        <p class="text-xs uppercase text-emerald-100">Current Value</p>
+                        <p id="active-investment-current-value" class="text-2xl font-bold mt-1">GH₵ 0.00</p>
+                    </div>
+                </div>
+                <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-5">
+                    <div class="bg-white/10 rounded-xl p-4 border border-white/10">
+                        <p class="text-xs uppercase text-emerald-100">Plan</p>
+                        <p id="active-investment-plan" class="font-semibold mt-1">N/A</p>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-4 border border-white/10">
+                        <p class="text-xs uppercase text-emerald-100">Amount Invested</p>
+                        <p id="active-investment-amount" class="font-semibold mt-1">GH₵ 0.00</p>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-4 border border-white/10">
+                        <p class="text-xs uppercase text-emerald-100">Started On</p>
+                        <p id="active-investment-started" class="font-semibold mt-1">N/A</p>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-4 border border-white/10">
+                        <p class="text-xs uppercase text-emerald-100">Maturity Date</p>
+                        <p id="active-investment-matures" class="font-semibold mt-1">N/A</p>
+                    </div>
+                    <div class="bg-white/10 rounded-xl p-4 border border-white/10">
+                        <p class="text-xs uppercase text-emerald-100">Daily Income</p>
+                        <p id="active-investment-daily-income" class="font-semibold mt-1">GH₵ 0.00</p>
+                    </div>
+                </div>
+            </section>
+
             <section class="grid lg:grid-cols-3 gap-6">
                 <div id="plans-section" class="lg:col-span-2 bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-4">
@@ -615,7 +651,9 @@
                     : status === 'rejected'
                         ? 'text-red-700 bg-red-50 border-red-200'
                         : 'text-amber-700 bg-amber-50 border-amber-200';
-                const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+                const statusLabel = status === 'approved'
+                    ? 'Investment Active'
+                    : status.charAt(0).toUpperCase() + status.slice(1);
                 const valueText = status === 'approved'
                     ? `Current value: ${formatCurrency(deposit.current_value || deposit.amount)} • Day ${deposit.elapsed_days || 0}/${deposit.payout_days || 7}`
                     : status === 'withdrawn'
@@ -641,7 +679,7 @@
                 const motivationText = status === 'approved'
                     ? (canWithdraw
                         ? 'Great job! Your plan has matured. Submit your withdrawal request and payment will be handled manually.'
-                        : `Keep going! ${remainingDays} day(s) left before withdrawal unlocks.`)
+                        : `Started successfully. Your investment is now running and earning daily. ${remainingDays} day(s) left before withdrawal unlocks.`)
                     : '';
                 const providerText = deposit.payment_provider ? `${deposit.payment_provider}` : 'N/A';
                 const phoneText = deposit.mobile_number ? `${deposit.mobile_number}` : '-';
@@ -670,6 +708,33 @@
                     </div>
                 `;
             }).join('');
+        }
+
+        function renderActiveInvestmentCard() {
+            const card = document.getElementById('active-investment-card');
+            const activeDeposits = (appState.deposits || []).filter((deposit) => String(deposit.status || '').toLowerCase() === 'approved');
+
+            if (!activeDeposits.length) {
+                card.classList.add('hidden');
+                return;
+            }
+
+            const activeDeposit = activeDeposits[0];
+            const activeCount = activeDeposits.length;
+            const currentValue = Number(activeDeposit.current_value || activeDeposit.amount || 0);
+            const startedAt = activeDeposit.approved_at ? new Date(activeDeposit.approved_at).toLocaleString() : 'N/A';
+            const maturityAt = activeDeposit.payout_due_at ? new Date(activeDeposit.payout_due_at).toLocaleString() : 'N/A';
+            const dayText = `Day ${Number(activeDeposit.elapsed_days || 0)}/${Number(activeDeposit.payout_days || 7)}`;
+            const suffix = activeCount > 1 ? ` You currently have ${activeCount} active investments.` : '';
+
+            document.getElementById('active-investment-message').textContent = `${activeDeposit.plan_name} is now running and earning daily. ${dayText}.${suffix}`;
+            document.getElementById('active-investment-current-value').textContent = formatCurrency(currentValue);
+            document.getElementById('active-investment-plan').textContent = activeDeposit.plan_name || 'N/A';
+            document.getElementById('active-investment-amount').textContent = formatCurrency(activeDeposit.amount || 0);
+            document.getElementById('active-investment-started').textContent = startedAt;
+            document.getElementById('active-investment-matures').textContent = maturityAt;
+            document.getElementById('active-investment-daily-income').textContent = formatCurrency(activeDeposit.daily_income || 0);
+            card.classList.remove('hidden');
         }
 
         function renderSummary() {
@@ -999,6 +1064,7 @@
                 await loadChatSession();
                 renderPlans();
                 renderHistory();
+                renderActiveInvestmentCard();
                 renderSummary();
                 renderReferralWidget();
 
