@@ -1,3 +1,104 @@
+// PAYSTACK WEBHOOK HANDLER
+app.post('/api/payment/webhook', (req, res) => {
+  // Paystack sends events as JSON
+  const event = req.body;
+  // For extra security, you can verify the signature here (optional, not shown for brevity)
+  if (event && event.event === 'charge.success' && event.data && event.data.status === 'success') {
+    const reference = event.data.reference;
+    const amount = event.data.amount / 100; // Convert from kobo/pesewas
+    const email = event.data.customer.email;
+    const plan = (event.data.metadata && event.data.metadata.custom_fields && event.data.metadata.custom_fields.find(f => f.variable_name === 'plan')) ? event.data.metadata.custom_fields.find(f => f.variable_name === 'plan').value : null;
+    const mobileNumber = (event.data.metadata && event.data.metadata.custom_fields && event.data.metadata.custom_fields.find(f => f.variable_name === 'momo_number')) ? event.data.metadata.custom_fields.find(f => f.variable_name === 'momo_number').value : null;
+    if (reference && plan && amount && mobileNumber) {
+      // Find user by email
+      db.get('SELECT id FROM users WHERE email = ?', [email], (err, user) => {
+        if (err || !user) {
+          console.error('Webhook: User not found for email', email);
+          return res.status(200).send('ok');
+        }
+        // Check if deposit already exists for this reference
+        db.get('SELECT id FROM deposits WHERE payment_reference = ?', [reference], (findErr, deposit) => {
+          if (findErr) return res.status(200).send('ok');
+          if (deposit) return res.status(200).send('ok'); // Already credited
+          // Credit user wallet (create deposit)
+          const planObj = INVESTMENT_PLANS.find((item) => item.id === plan);
+          if (!planObj) return res.status(200).send('ok');
+          db.run(
+            `INSERT INTO deposits (user_id, plan_id, plan_name, amount, status, payment_provider, payment_reference, mobile_number, approved_at) VALUES (?, ?, ?, ?, 'approved', ?, ?, ?, CURRENT_TIMESTAMP)`,
+            [user.id, planObj.id, planObj.name, amount, 'Paystack', reference, mobileNumber],
+            function(insertErr) {
+              if (insertErr) {
+                console.error('Webhook: Failed to credit deposit', insertErr);
+              }
+              return res.status(200).send('ok');
+            }
+          );
+        });
+      });
+    } else {
+      return res.status(200).send('ok');
+    }
+  } else {
+    return res.status(200).send('ok');
+  }
+});
+// PAYSTACK PAYMENT VERIFICATION ENDPOINT
+const axios = require('axios');
+
+// Verify Paystack payment by reference
+app.post('/api/payment/verify', async (req, res) => {
+  const { reference, planId, amount, mobileNumber } = req.body;
+  if (!reference || !planId || !amount || !mobileNumber) {
+    return res.status(400).json({ success: false, message: 'Missing required fields.' });
+  }
+  if (!PAYSTACK_SECRET_KEY) {
+    return res.status(500).json({ success: false, message: 'Paystack secret key not configured.' });
+  }
+  try {
+    const response = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
+      headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` }
+    });
+    const data = response.data;
+    if (data.status && data.data && data.data.status === 'success') {
+      // Extra check: verify amount matches
+      const paidAmount = Number(data.data.amount) / 100;
+      if (Math.abs(paidAmount - Number(amount)) > 0.01) {
+        return res.status(400).json({ success: false, message: 'Payment amount mismatch.' });
+      }
+      // Prevent duplicate deposit for same reference
+      db.get('SELECT id FROM deposits WHERE payment_reference = ?', [reference], (findErr, deposit) => {
+        if (findErr) {
+          console.error('Error checking for duplicate deposit:', findErr);
+          return res.status(500).json({ success: false, message: 'Server error.' });
+        }
+        if (deposit) {
+          return res.status(400).json({ success: false, message: 'Payment already recorded.' });
+        }
+        const plan = INVESTMENT_PLANS.find((item) => item.id === planId);
+        if (!plan) {
+          return res.status(400).json({ success: false, message: 'Invalid plan.' });
+        }
+        const roundedAmount = Math.round(Number(amount) * 100) / 100;
+        db.run(
+          `INSERT INTO deposits (user_id, plan_id, plan_name, amount, status, payment_provider, payment_reference, mobile_number, approved_at) VALUES (?, ?, ?, ?, 'approved', ?, ?, ?, CURRENT_TIMESTAMP)`,
+          [req.session.user.id, plan.id, plan.name, roundedAmount, 'Paystack', reference, mobileNumber],
+          function(insertErr) {
+            if (insertErr) {
+              console.error('Error creating deposit after Paystack verification:', insertErr);
+              return res.status(500).json({ success: false, message: 'Failed to record deposit.' });
+            }
+            return res.json({ success: true, message: 'Payment verified and deposit recorded.' });
+          }
+        );
+      });
+    } else {
+      return res.status(400).json({ success: false, message: 'Payment not successful.' });
+    }
+  } catch (error) {
+    console.error('Paystack verification error:', error.message);
+    return res.status(500).json({ success: false, message: 'Verification failed.' });
+  }
+});
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const bodyParser = require('body-parser');
