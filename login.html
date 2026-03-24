@@ -74,7 +74,7 @@
                     <input type="password" id="password" name="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-800 focus:border-blue-800">
                 </div>
                 <p id="form-message" class="hidden text-sm mb-4"></p>
-                <button type="submit" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded-full transition">Login</button>
+                <button id="login-submit-btn" type="submit" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded-full transition">Login</button>
             </form>
             <p class="text-center mt-4 text-sm text-gray-600">Don't have an account? <a href="/signup" class="text-blue-800 hover:underline">Sign up</a></p>
         </div>
@@ -109,42 +109,67 @@
             msg.className = `text-sm mb-4 ${isSuccess ? 'text-green-600' : 'text-red-600'}`;
         }
 
-        document.getElementById('login-form').addEventListener('submit', function(e) {
+        const MAX_ATTEMPTS = 5;
+        let failedAttempts = 0;
+
+        function setSubmitButtonState(isBusy) {
+            const submitBtn = document.getElementById('login-submit-btn');
+            if (!submitBtn) return;
+            submitBtn.disabled = isBusy;
+            submitBtn.textContent = isBusy ? 'Checking...' : 'Login';
+        }
+
+        document.getElementById('email').addEventListener('input', () => showMessage('', false));
+        document.getElementById('password').addEventListener('input', () => showMessage('', false));
+
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value.replace(/\r?\n/g, '');
+            const password = document.getElementById('password').value.trim();
 
-            fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            })
-            .then(async (response) => {
+            try {
+                setSubmitButtonState(true);
+
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
                 let data = {};
                 try {
                     data = await response.json();
                 } catch (error) {
                     data = { success: false, message: 'Unexpected server response' };
                 }
-                if (!response.ok && !data.message) {
-                    data.message = `Login failed (HTTP ${response.status})`;
-                }
-                return data;
-            })
-            .then(data => {
+
                 if (data.success) {
+                    failedAttempts = 0;
                     showMessage('Login successful. Redirecting...', true);
                     window.setTimeout(() => {
                         window.location.href = '/dashboard';
                     }, 600);
-                } else {
-                    showMessage(data.message || 'Login failed', false);
+                    return;
                 }
-            })
-            .catch(error => {
+
+                if (response.status === 429) {
+                    showMessage(data.message || 'Too many attempts. Please wait and try again.', false);
+                    return;
+                }
+
+                failedAttempts += 1;
+                const attemptsLeft = Math.max(0, MAX_ATTEMPTS - failedAttempts);
+                const baseMessage = data.message || 'Login failed';
+                const hint = attemptsLeft > 0
+                    ? ` You can still try ${attemptsLeft} more time${attemptsLeft === 1 ? '' : 's'}.`
+                    : ' Please wait 10 minutes, then try again.';
+                showMessage(baseMessage + hint, false);
+            } catch (error) {
                 console.error('Error:', error);
                 showMessage('Login failed. Please ensure the server is running.', false);
-            });
+            } finally {
+                setSubmitButtonState(false);
+            }
         });
 
         checkAlreadyLoggedIn();

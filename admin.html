@@ -39,11 +39,20 @@
             </div>
 
             <div class="bg-white rounded-lg shadow p-6 mt-6">
-                <h2 class="text-xl font-bold mb-4">Pending Deposits</h2>
+                <h2 class="text-xl font-bold mb-1">Pending Payment Checks</h2>
+                <p class="text-sm text-gray-600 mb-4">Most deposits activate automatically. Only use this section if provider confirmation is delayed.</p>
                 <button onclick="loadPendingDeposits()" class="bg-blue-800 text-white px-4 py-2 rounded mb-4">Refresh</button>
                 <input id="pending-deposits-filter" type="text" placeholder="Filter by username, email, phone, or reference" class="w-full border border-gray-300 rounded px-3 py-2 mb-4">
                 <div id="pending-deposits-list" class="space-y-4">
                     <!-- Pending deposits will be listed here -->
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6 mt-6">
+                <h2 class="text-xl font-bold mb-4">Withdrawal Requests</h2>
+                <button onclick="loadWithdrawalRequests()" class="bg-blue-800 text-white px-4 py-2 rounded mb-4">Refresh</button>
+                <div id="withdrawal-requests-list" class="space-y-4">
+                    <!-- Withdrawal requests will be listed here -->
                 </div>
             </div>
 
@@ -227,7 +236,7 @@
                     return searchable.includes(filterValue);
                 });
                 if (deposits.length === 0) {
-                    list.innerHTML = '<p class="text-gray-500">No pending deposits.</p>';
+                    list.innerHTML = '<p class="text-gray-500">No pending payment checks.</p>';
                     return;
                 }
 
@@ -244,8 +253,8 @@
                             <p><strong>Reference:</strong> ${deposit.payment_reference || '-'}</p>
                         </div>
                         <div class="shrink-0">
-                            <button onclick="approveDeposit(${deposit.id})" class="bg-blue-800 text-white px-4 py-2 rounded mr-2">Approve</button>
-                            <button onclick="rejectDeposit(${deposit.id})" class="bg-red-600 text-white px-4 py-2 rounded">Reject</button>
+                            <button onclick="approveDeposit(${deposit.id})" class="bg-blue-800 text-white px-4 py-2 rounded mr-2">Mark Active</button>
+                            <button onclick="rejectDeposit(${deposit.id})" class="bg-red-600 text-white px-4 py-2 rounded">Mark Failed</button>
                         </div>
                     `;
                     list.appendChild(depositDiv);
@@ -253,7 +262,7 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                document.getElementById('pending-deposits-list').innerHTML = '<p class="text-red-500">Failed to load pending deposits.</p>';
+                document.getElementById('pending-deposits-list').innerHTML = '<p class="text-red-500">Failed to load pending payment checks.</p>';
             });
         }
 
@@ -262,7 +271,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Deposit approved. Growth starts now.');
+                    alert('Deposit marked active. The 7-day timer starts from approval time.');
                     loadPendingDeposits();
                 } else {
                     alert(data.message || 'Error approving deposit');
@@ -279,7 +288,7 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Deposit rejected.');
+                    alert('Deposit marked failed.');
                     loadPendingDeposits();
                 } else {
                     alert(data.message || 'Error rejecting deposit');
@@ -288,6 +297,106 @@
             .catch(error => {
                 console.error('Error:', error);
                 alert('Rejection failed. Ensure server is running.');
+            });
+        }
+
+        function loadWithdrawalRequests() {
+            fetch('/api/admin/withdrawal-requests')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('withdrawal-requests-list');
+                list.innerHTML = '';
+
+                const requests = data.requests || [];
+                if (requests.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500">No withdrawal requests yet.</p>';
+                    return;
+                }
+
+                requests.forEach((request) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'border p-4 rounded';
+                    const statusClass = request.status === 'approved'
+                        ? 'text-green-700 bg-green-50 border-green-200'
+                        : request.status === 'rejected'
+                            ? 'text-red-700 bg-red-50 border-red-200'
+                            : 'text-amber-700 bg-amber-50 border-amber-200';
+                    const requestedAt = request.requested_at ? new Date(request.requested_at).toLocaleString() : '-';
+                    const processedAt = request.processed_at ? new Date(request.processed_at).toLocaleString() : '-';
+
+                    wrapper.innerHTML = `
+                        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                            <div>
+                                <p><strong>User:</strong> ${request.user_name} (${request.user_email})</p>
+                                <p><strong>Plan:</strong> ${request.plan_name}</p>
+                                <p><strong>Payout Amount:</strong> ${formatCurrency(request.payout_amount)}</p>
+                                <p><strong>Destination:</strong> ${request.provider_name} - ${request.account_name} (${request.account_number})</p>
+                                <p><strong>Requested:</strong> ${requestedAt}</p>
+                                <p><strong>Status:</strong> <span class="inline-flex text-xs border rounded-full px-2 py-1 ${statusClass}">${request.status}</span></p>
+                                ${request.note ? `<p><strong>User Note:</strong> ${request.note}</p>` : ''}
+                                ${request.admin_note ? `<p><strong>Admin Note:</strong> ${request.admin_note}</p>` : ''}
+                                ${request.processed_at ? `<p><strong>Processed:</strong> ${processedAt}</p>` : ''}
+                            </div>
+                            ${request.status === 'pending' ? `
+                                <div class="shrink-0 flex flex-col gap-2">
+                                    <button onclick="approveWithdrawal(${request.id})" class="bg-green-600 text-white px-4 py-2 rounded">Confirm Manual Payment</button>
+                                    <button onclick="rejectWithdrawal(${request.id})" class="bg-red-600 text-white px-4 py-2 rounded">Reject</button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                    list.appendChild(wrapper);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('withdrawal-requests-list').innerHTML = '<p class="text-red-500">Failed to load withdrawal requests.</p>';
+            });
+        }
+
+        function approveWithdrawal(id) {
+            const adminNote = window.prompt('Optional note after you have paid manually:', '') || '';
+            fetch(`/api/admin/approve-withdrawal/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ adminNote })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert(data.message || 'Failed to approve withdrawal.');
+                    return;
+                }
+
+                alert(data.message || 'Manual payment recorded.');
+                loadWithdrawalRequests();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to approve withdrawal.');
+            });
+        }
+
+        function rejectWithdrawal(id) {
+            const adminNote = window.prompt('Reason for rejection:', '') || '';
+            fetch(`/api/admin/reject-withdrawal/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ adminNote })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert(data.message || 'Failed to reject withdrawal.');
+                    return;
+                }
+
+                alert(data.message || 'Withdrawal rejected.');
+                loadWithdrawalRequests();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to reject withdrawal.');
             });
         }
 
@@ -345,6 +454,7 @@
             loadUsersOverview();
             loadPendingUsers();
             loadPendingDeposits();
+            loadWithdrawalRequests();
             loadSecurityLogs();
             document.getElementById('pending-deposits-filter').addEventListener('input', loadPendingDeposits);
             document.getElementById('security-logs-filter').addEventListener('input', loadSecurityLogs);

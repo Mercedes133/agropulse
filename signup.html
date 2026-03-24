@@ -157,7 +157,7 @@
             const name = document.getElementById('name').value;
             const email = document.getElementById('email').value;
             const phone = document.getElementById('phone').value;
-            const password = document.getElementById('password').value;
+            const password = document.getElementById('password').value.trim();
             const referralCode = document.getElementById('referral-code').value;
             const submitBtn = document.getElementById('signup-submit-btn');
 
@@ -190,7 +190,7 @@
                     return;
                 }
 
-                showMessage('Account created successfully! A welcome email has been sent. Redirecting to dashboard...', true);
+                showMessage('Account created successfully! Redirecting to dashboard...', true);
                 window.setTimeout(() => {
                     window.location.href = '/dashboard';
                 }, 1500);

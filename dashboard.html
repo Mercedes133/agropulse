@@ -62,7 +62,7 @@
             </section>
 
             <section class="grid lg:grid-cols-3 gap-6">
-                <div class="lg:col-span-2 bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
+                <div id="plans-section" class="lg:col-span-2 bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-4">
                         <h2 class="text-xl font-bold text-slate-900">Investment Plans</h2>
                         <span class="text-sm text-slate-500">Pick one to continue</span>
@@ -129,6 +129,55 @@
                     <p class="text-slate-500">No deposits yet.</p>
                 </div>
             </section>
+
+            <div id="withdrawal-modal" class="hidden fixed inset-0 z-50 bg-slate-950/50 px-4 py-8 overflow-y-auto">
+                <div class="max-w-lg mx-auto bg-white rounded-2xl shadow-xl border border-slate-200 p-6 mt-10">
+                    <div class="flex items-start justify-between gap-4 mb-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-900">Request Withdrawal</h2>
+                            <p class="text-sm text-slate-500 mt-1">Submit payout details for admin review.</p>
+                        </div>
+                        <button type="button" onclick="closeWithdrawalModal()" class="text-slate-500 hover:text-slate-700">
+                            <i class="fa-solid fa-xmark text-lg"></i>
+                        </button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Destination</label>
+                            <select id="withdrawal-destination-type" class="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="momo">Mobile Money</option>
+                                <option value="bank">Bank Account</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Provider / Bank Name</label>
+                            <input id="withdrawal-provider-name" type="text" placeholder="MTN, Telecel, GCB, Ecobank..." class="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Account Name</label>
+                            <input id="withdrawal-account-name" type="text" placeholder="Recipient full name" class="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Account / Wallet Number</label>
+                            <input id="withdrawal-account-number" type="text" placeholder="Recipient account or mobile money number" class="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-700 mb-2">Note</label>
+                            <textarea id="withdrawal-note" rows="3" placeholder="Optional note for admin" class="w-full border border-slate-300 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3 mt-6">
+                        <button type="button" onclick="closeWithdrawalModal()" class="flex-1 border border-slate-300 text-slate-700 font-semibold py-3 rounded-xl">Cancel</button>
+                        <button id="submit-withdrawal-btn" type="button" onclick="submitWithdrawalRequest()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl">Submit Request</button>
+                    </div>
+                </div>
+            </div>
 
             <section class="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-sm">
                 <div class="flex items-start justify-between mb-4">
@@ -197,6 +246,49 @@
                     </div>
                 </div>
             </section>
+
+            <section class="bg-slate-900 text-white rounded-2xl p-6 shadow-sm border border-slate-800">
+                <div class="flex items-start justify-between gap-4 mb-5">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400 mb-2">Member Mood</p>
+                        <h2 class="text-xl font-bold">Why Members Enjoy Using Agro Pluse</h2>
+                        <p class="text-sm text-slate-300 mt-1">A simple confidence boost while you manage your plans and referrals.</p>
+                    </div>
+                    <div class="hidden sm:flex items-center gap-1 text-amber-300 text-sm">
+                        <i class="fa-solid fa-star"></i>
+                        <i class="fa-solid fa-star"></i>
+                        <i class="fa-solid fa-star"></i>
+                        <i class="fa-solid fa-star"></i>
+                        <i class="fa-solid fa-star"></i>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-4">
+                    <article class="rounded-2xl bg-slate-800/80 border border-slate-700 p-4">
+                        <div class="w-10 h-10 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center mb-3">
+                            <i class="fa-solid fa-bolt"></i>
+                        </div>
+                        <p class="text-slate-100 leading-7">Fast signup, simple payment flow, and a dashboard that keeps everything in one place.</p>
+                        <p class="text-xs uppercase tracking-wide text-slate-400 mt-3">Easy to use</p>
+                    </article>
+
+                    <article class="rounded-2xl bg-slate-800/80 border border-slate-700 p-4">
+                        <div class="w-10 h-10 rounded-full bg-green-500/20 text-green-300 flex items-center justify-center mb-3">
+                            <i class="fa-solid fa-mobile-screen-button"></i>
+                        </div>
+                        <p class="text-slate-100 leading-7">Mobile money support makes it feel familiar for everyday users funding their plans.</p>
+                        <p class="text-xs uppercase tracking-wide text-slate-400 mt-3">Familiar payments</p>
+                    </article>
+
+                    <article class="rounded-2xl bg-slate-800/80 border border-slate-700 p-4">
+                        <div class="w-10 h-10 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center mb-3">
+                            <i class="fa-solid fa-chart-line"></i>
+                        </div>
+                        <p class="text-slate-100 leading-7">Clear plan cards, progress updates, and referral rewards keep the experience active and motivating.</p>
+                        <p class="text-xs uppercase tracking-wide text-slate-400 mt-3">Motivating layout</p>
+                    </article>
+                </div>
+            </section>
         </div>
     </main>
 
@@ -206,7 +298,8 @@
             plans: [],
             selectedPlan: null,
             deposits: [],
-            referrals: null
+            referrals: null,
+            pendingWithdrawalDepositId: null
         };
 
         let selectedNetwork = 'mtn';
@@ -255,7 +348,7 @@
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing...';
 
             try {
-                const res = await fetch('/api/payment/initiate', {
+                let res = await fetch('/api/payment/initiate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -265,23 +358,118 @@
                         network: selectedNetwork
                     })
                 });
-                const data = await res.json();
+                let data = await res.json();
+
+                if (!res.ok && res.status === 503) {
+                    res = await fetch('/api/deposit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            planId: appState.selectedPlan.id,
+                            amount: Number(amountRaw),
+                            paymentReference: `LOCAL-${Date.now()}`,
+                            mobileNumber: momoNumber
+                        })
+                    });
+                    data = await res.json();
+                }
+
                 if (data.success) {
-                    showPaymentStatus('success', data.message);
+                    showPaymentStatus('success', data.message || 'Deposit successful. Your plan is now active.');
                     document.getElementById('momo-number').value = '';
                     document.getElementById('deposit-amount').value = '';
                     await loadDeposits();
+                    await loadProfile();
                     renderHistory();
                     renderSummary();
+                    focusOnPlanSection();
                 } else {
                     showPaymentStatus('error', data.message || 'Payment failed. Please try again.');
                 }
             } catch (err) {
                 showPaymentStatus('error', 'Network error. Please check your connection and try again.');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-lock text-sm"></i> Pay Now';
+            }
+        }
+
+        function focusOnPlanSection() {
+            if (appState.selectedPlan) {
+                document.getElementById('selected-plan-name').textContent = appState.selectedPlan.name;
             }
 
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-lock text-sm"></i> Pay Now';
+            const section = document.getElementById('plans-section');
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        function openWithdrawalModal(depositId) {
+            if (!depositId) {
+                return;
+            }
+
+            appState.pendingWithdrawalDepositId = depositId;
+            document.getElementById('withdrawal-modal').classList.remove('hidden');
+        }
+
+        function closeWithdrawalModal() {
+            appState.pendingWithdrawalDepositId = null;
+            document.getElementById('withdrawal-modal').classList.add('hidden');
+            document.getElementById('withdrawal-provider-name').value = '';
+            document.getElementById('withdrawal-account-name').value = '';
+            document.getElementById('withdrawal-account-number').value = '';
+            document.getElementById('withdrawal-note').value = '';
+            document.getElementById('withdrawal-destination-type').value = 'momo';
+        }
+
+        async function submitWithdrawalRequest() {
+            const depositId = appState.pendingWithdrawalDepositId;
+            if (!depositId) {
+                return;
+            }
+
+            const destinationType = document.getElementById('withdrawal-destination-type').value;
+            const providerName = document.getElementById('withdrawal-provider-name').value.trim();
+            const accountName = document.getElementById('withdrawal-account-name').value.trim();
+            const accountNumber = document.getElementById('withdrawal-account-number').value.trim();
+            const note = document.getElementById('withdrawal-note').value.trim();
+            const submitBtn = document.getElementById('submit-withdrawal-btn');
+
+            if (!providerName || !accountName || !accountNumber) {
+                showPaymentStatus('error', 'Fill in provider, account name, and account number before submitting your withdrawal.');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            try {
+                const response = await fetch(`/api/deposits/${depositId}/withdraw`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ destinationType, providerName, accountName, accountNumber, note })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    showPaymentStatus('error', data.message || 'Withdrawal failed. Please try again.');
+                    return;
+                }
+
+                closeWithdrawalModal();
+                showPaymentStatus('success', `${data.message} Expected payout: ${formatCurrency(data.payout)}.`);
+                await loadDeposits();
+                await loadProfile();
+                renderHistory();
+                renderSummary();
+            } catch (error) {
+                showPaymentStatus('error', 'Withdrawal request failed. Please try again.');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Request';
+            }
         }
 
         function showPaymentStatus(type, message) {
@@ -372,13 +560,36 @@
                 const status = String(deposit.status || 'pending').toLowerCase();
                 const statusClass = status === 'approved'
                     ? 'text-green-700 bg-green-50 border-green-200'
+                    : status === 'withdrawn'
+                        ? 'text-blue-700 bg-blue-50 border-blue-200'
                     : status === 'rejected'
                         ? 'text-red-700 bg-red-50 border-red-200'
                         : 'text-amber-700 bg-amber-50 border-amber-200';
                 const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
                 const valueText = status === 'approved'
                     ? `Current value: ${formatCurrency(deposit.current_value || deposit.amount)} • Day ${deposit.elapsed_days || 0}/${deposit.payout_days || 7}`
-                    : 'Awaiting admin payment confirmation';
+                    : status === 'withdrawn'
+                        ? `Withdrawn on ${new Date(deposit.withdrawn_at).toLocaleString()}`
+                        : 'Waiting for payment confirmation. Once confirmed, your investment becomes active automatically.';
+                const elapsedDays = Number(deposit.elapsed_days || 0);
+                const payoutDays = Number(deposit.payout_days || 7);
+                const remainingDays = Math.max(0, payoutDays - elapsedDays);
+                const progressPercent = Math.min(100, Number(deposit.progress_percent || 0));
+                const canWithdraw = status === 'approved' && Boolean(deposit.is_matured);
+                const withdrawalRequestStatus = String(deposit.withdrawal_request_status || '').toLowerCase();
+                const requestStatusClass = withdrawalRequestStatus === 'approved'
+                    ? 'text-green-700 bg-green-50 border-green-200'
+                    : withdrawalRequestStatus === 'rejected'
+                        ? 'text-red-700 bg-red-50 border-red-200'
+                        : 'text-amber-700 bg-amber-50 border-amber-200';
+                const requestStatusText = withdrawalRequestStatus
+                    ? `Withdrawal request: ${withdrawalRequestStatus.charAt(0).toUpperCase() + withdrawalRequestStatus.slice(1)}`
+                    : '';
+                const motivationText = status === 'approved'
+                    ? (canWithdraw
+                        ? 'Great job! Your plan has matured. Submit your withdrawal request and payment will be handled manually.'
+                        : `Keep going! ${remainingDays} day(s) left before withdrawal unlocks.`)
+                    : '';
                 const providerText = deposit.payment_provider ? `${deposit.payment_provider}` : 'N/A';
                 const phoneText = deposit.mobile_number ? `${deposit.mobile_number}` : '-';
                 return `
@@ -389,7 +600,17 @@
                             <p class="text-xs text-slate-600">Provider: ${providerText} • Mobile: ${phoneText}</p>
                             <p class="text-xs text-green-700">Expected payout: ${formatCurrency(deposit.projected_payout || (Number(deposit.amount || 0) * 7))}</p>
                             <p class="text-xs text-slate-600 mt-1">${valueText}</p>
+                            ${status === 'approved' ? `
+                                <div class="mt-2 w-full max-w-md bg-slate-200 rounded-full h-2">
+                                    <div class="bg-green-600 h-2 rounded-full transition-all" style="width: ${progressPercent}%"></div>
+                                </div>
+                                <p class="text-xs text-slate-600 mt-1">${motivationText}</p>
+                            ` : ''}
                             <p class="inline-flex mt-2 text-xs border rounded-full px-2 py-1 ${statusClass}">${statusLabel}</p>
+                            ${withdrawalRequestStatus ? `<p class="inline-flex mt-2 ml-2 text-xs border rounded-full px-2 py-1 ${requestStatusClass}">${requestStatusText}</p>` : ''}
+                            ${deposit.withdrawal_requested_at ? `<p class="text-xs text-slate-500 mt-2">Requested on ${new Date(deposit.withdrawal_requested_at).toLocaleString()}</p>` : ''}
+                            ${deposit.withdrawal_admin_note ? `<p class="text-xs text-slate-600 mt-1">Admin note: ${deposit.withdrawal_admin_note}</p>` : ''}
+                            ${canWithdraw && withdrawalRequestStatus !== 'pending' && status !== 'withdrawn' ? `<button onclick="openWithdrawalModal(${deposit.id})" class="mt-2 ml-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Request Withdrawal</button>` : ''}
                         </div>
                         <p class="font-bold text-blue-800">${formatCurrency(deposit.amount)}</p>
                     </div>

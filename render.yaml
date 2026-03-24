@@ -5,6 +5,7 @@ services:
     plan: starter
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /health
     autoDeploy: true
     disks:
       - name: agro-data
@@ -17,18 +18,8 @@ services:
       - key: DATABASE_PATH
         value: /opt/render/project/src/data/users.db
       - key: ADMIN_USERNAME
-        value: mercedes133
+        value: CHANGE_ME
       - key: ADMIN_PASSWORD
-        value: Dacosta133@
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
-        value: CHANGE_ME
-      - key: SMTP_PASS
-        value: CHANGE_ME
-      - key: FROM_EMAIL
         value: CHANGE_ME
       - key: PAYSTACK_SECRET_KEY
         value: CHANGE_ME

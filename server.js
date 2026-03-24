@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const session = require('express-session');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
+const helmet = require('helmet');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -14,8 +15,13 @@ const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'mercedes133';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Dacosta133@';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const DEFAULT_ADMIN_USERNAME = 'mercedes133';
+const DEFAULT_ADMIN_PASSWORD = 'Dacosta133@';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || (!IS_PRODUCTION ? DEFAULT_ADMIN_USERNAME : '');
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (!IS_PRODUCTION ? DEFAULT_ADMIN_PASSWORD : '');
+const ADMIN_CONFIGURED = Boolean(ADMIN_USERNAME && ADMIN_PASSWORD);
+const ADMIN_USING_DEFAULTS = ADMIN_USERNAME === DEFAULT_ADMIN_USERNAME && ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD;
 
 // Paystack configuration — swap in your live keys when ready
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
@@ -90,6 +96,18 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production' && req.get('x-forwarded-proto') !== 'https') {
+    return res.redirect(`https://${req.get('host')}${req.originalUrl}`);
+  }
+  return next();
+});
+
 // Middleware
 app.use((req, res, next) => {
   res.setHeader('Bypass-Tunnel-Reminder', 'true');
@@ -134,6 +152,11 @@ app.use((req, res, next) => {
     return next();
   }
 
+  if (!isAdminReady()) {
+    writeSecurityLog('admin_not_configured', req, { production: IS_PRODUCTION, usingDefaults: ADMIN_USING_DEFAULTS });
+    return res.status(503).send('Admin access is disabled until secure admin credentials are configured.');
+  }
+
   const authHeader = String(req.headers.authorization || '');
   if (!authHeader.startsWith('Basic ')) {
     writeSecurityLog('admin_auth_missing', req);
@@ -148,7 +171,7 @@ app.use((req, res, next) => {
     const username = separatorIndex >= 0 ? credentials.slice(0, separatorIndex) : '';
     const password = separatorIndex >= 0 ? credentials.slice(separatorIndex + 1) : '';
 
-    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+    if (!isValidAdminCredentials(username, password)) {
       writeSecurityLog('admin_auth_failed', req, { username });
       res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
       return res.status(401).send('Invalid admin credentials');
@@ -194,7 +217,38 @@ db.serialize(() => {
     payment_reference TEXT,
     mobile_number TEXT,
     approved_at DATETIME,
+    withdrawn_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS login_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    email TEXT,
+    login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ip_address TEXT,
+    success INTEGER DEFAULT 0,
+    reason TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS withdrawal_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deposit_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    payout_amount REAL NOT NULL,
+    destination_type TEXT NOT NULL,
+    provider_name TEXT NOT NULL,
+    account_name TEXT NOT NULL,
+    account_number TEXT NOT NULL,
+    note TEXT,
+    status TEXT DEFAULT 'pending',
+    admin_note TEXT,
+    requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    processed_at DATETIME,
+    processed_by TEXT,
+    FOREIGN KEY(deposit_id) REFERENCES deposits(id),
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
 
@@ -273,7 +327,9 @@ db.serialize(() => {
     const hasStatus = allColumns.some((column) => column.name === 'status');
     const hasPaymentProvider = allColumns.some((column) => column.name === 'payment_provider');
     const hasPaymentReference = allColumns.some((column) => column.name === 'payment_reference');
+    const hasMobileNumber = allColumns.some((column) => column.name === 'mobile_number');
     const hasApprovedAt = allColumns.some((column) => column.name === 'approved_at');
+    const hasWithdrawnAt = allColumns.some((column) => column.name === 'withdrawn_at');
 
     if (!hasStatus) {
       db.run(`ALTER TABLE deposits ADD COLUMN status TEXT DEFAULT 'pending'`, (alterErr) => {
@@ -299,10 +355,26 @@ db.serialize(() => {
       });
     }
 
+    if (!hasMobileNumber) {
+      db.run(`ALTER TABLE deposits ADD COLUMN mobile_number TEXT`, (alterErr) => {
+        if (alterErr) {
+          console.error('Error adding deposits.mobile_number column:', alterErr);
+        }
+      });
+    }
+
     if (!hasApprovedAt) {
       db.run(`ALTER TABLE deposits ADD COLUMN approved_at DATETIME`, (alterErr) => {
         if (alterErr) {
           console.error('Error adding deposits.approved_at column:', alterErr);
+        }
+      });
+    }
+
+    if (!hasWithdrawnAt) {
+      db.run(`ALTER TABLE deposits ADD COLUMN withdrawn_at DATETIME`, (alterErr) => {
+        if (alterErr) {
+          console.error('Error adding deposits.withdrawn_at column:', alterErr);
         }
       });
     }
@@ -547,11 +619,48 @@ function parseBasicAuthorization(headerValue) {
   }
 }
 
+function isAdminReady() {
+  if (!ADMIN_CONFIGURED) {
+    return false;
+  }
+
+  if (IS_PRODUCTION && ADMIN_USING_DEFAULTS) {
+    return false;
+  }
+
+  return true;
+}
+
+function safeEqualText(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''), 'utf8');
+  const rightBuffer = Buffer.from(String(right || ''), 'utf8');
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function isValidAdminCredentials(username, password) {
+  if (!isAdminReady()) {
+    return false;
+  }
+
+  return safeEqualText(username, ADMIN_USERNAME) && safeEqualText(password, ADMIN_PASSWORD);
+}
+
 function requireAdminAccess(req, res, next) {
+  if (!isAdminReady()) {
+    writeSecurityLog('admin_not_configured', req, { production: IS_PRODUCTION, usingDefaults: ADMIN_USING_DEFAULTS });
+    return res.status(503).json({
+      success: false,
+      message: 'Admin access is disabled until secure admin credentials are configured.'
+    });
+  }
+
   const credentials = parseBasicAuthorization(req.headers.authorization);
-  const valid = credentials
-    && credentials.username === ADMIN_USERNAME
-    && credentials.password === ADMIN_PASSWORD;
+  const valid = credentials && isValidAdminCredentials(credentials.username, credentials.password);
 
   if (valid) {
     return next();
@@ -583,6 +692,7 @@ function getEmailTransporter() {
     auth: { user, pass }
   });
 }
+
 
 async function sendSignupOtpEmail({ email, name, otpCode }) {
   const transporter = getEmailTransporter();
@@ -650,6 +760,7 @@ async function sendDepositStatusEmail({ email, name, status, amount, planName, r
     html
   });
 }
+
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -774,10 +885,6 @@ function createUserAccount({ name, email, phone, hashedPassword, referrerId }, r
               referredBy: referrerId || null
             }
           });
-
-          sendWelcomeEmail({ email, name }).catch((mailErr) => {
-            console.error('Welcome email error:', mailErr);
-          });
         }
       );
     }
@@ -849,11 +956,16 @@ function isStrongPassword(password) {
 
 const loginRateLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 8,
+  max: 5,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
+    const identifier = String(req.body?.email || '').trim() || 'unknown';
     writeSecurityLog('login_rate_limited', req);
+    db.run(
+      `INSERT INTO login_history (email, ip_address, success, reason) VALUES (?, ?, ?, ?)`,
+      [identifier, getClientIp(req), 0, 'Rate limited after 5 attempts']
+    );
     return res.status(429).json({ success: false, message: 'Too many login attempts. Please try again in 10 minutes.' });
   }
 });
@@ -864,12 +976,13 @@ app.post('/api/signup', (req, res) => {
   const normalizedEmail = normalizeEmail(email);
   const normalizedPhone = normalizePhone(phone);
   const [phoneVariant1, phoneVariant2, phoneVariant3] = getPhoneLookupVariants(phone);
+  const trimmedPassword = String(password || '').trim(); // ENSURE PASSWORD IS TRIMMED
 
-  if (!name || !normalizedEmail || !normalizedPhone || !password) {
+  if (!name || !normalizedEmail || !normalizedPhone || !trimmedPassword) {
     return res.status(400).json({ success: false, message: 'All fields are required' });
   }
 
-  if (!isStrongPassword(password)) {
+  if (!isStrongPassword(trimmedPassword)) {
     return res.status(400).json({
       success: false,
       message: 'Password must be at least 8 characters and include 1 uppercase letter, 1 number, and 1 symbol.'
@@ -914,7 +1027,7 @@ app.post('/api/signup', (req, res) => {
         name: String(name).trim(),
         email: normalizedEmail,
         phone: normalizedPhone,
-        hashedPassword: hashPassword(password),
+        hashedPassword: hashPassword(trimmedPassword),
         referrerId: refResult || null
       }, req, res);
     });
@@ -926,57 +1039,79 @@ app.post('/api/login', loginRateLimiter, (req, res) => {
   const identifier = String(email || '').trim();
   const normalizedEmail = normalizeEmail(identifier);
   const [phoneVariant1, phoneVariant2, phoneVariant3] = getPhoneLookupVariants(identifier);
-  const rawPassword = String(password || '');
-  const trimmedPassword = rawPassword.trim();
+  const rawPassword = String(password || '').trim(); // TRIMMED PASSWORD
   
   // Validate input
   if (!identifier || !rawPassword) {
+    const reason = !identifier ? 'Missing email' : 'Missing password';
+    db.run(`INSERT INTO login_history (email, ip_address, success, reason) VALUES (?, ?, ?, ?)`,
+      [identifier || 'unknown', getClientIp(req), 0, reason]);
     return res.json({ success: false, message: 'Email and password required' });
   }
 
   db.get(
     `SELECT *
      FROM users
-     WHERE (LOWER(email) = ? OR phone IN (?, ?, ?))
-       AND status = 'approved'`,
+     WHERE (LOWER(email) = ? OR phone IN (?, ?, ?))`,
     [normalizedEmail, phoneVariant1, phoneVariant2, phoneVariant3],
     (err, row) => {
       if (err) {
         console.error('Login error:', err);
         writeSecurityLog('login_error', req, { identifier });
+        db.run(`INSERT INTO login_history (email, ip_address, success, reason) VALUES (?, ?, ?, ?)`,
+          [identifier, getClientIp(req), 0, 'Database error']);
         return res.json({ success: false, message: 'Server error' });
       }
 
-      const validRaw = row ? verifyPassword(rawPassword, row.password) : false;
-      const validTrimmed = !validRaw && trimmedPassword && trimmedPassword !== rawPassword
-        ? verifyPassword(trimmedPassword, row.password)
-        : false;
-
-      if (row && (validRaw || validTrimmed)) {
-        const passwordUsed = validRaw ? rawPassword : trimmedPassword;
-
-        if (!isBcryptHash(row.password)) {
-          const upgradedHash = hashPassword(passwordUsed);
-          db.run(`UPDATE users SET password = ? WHERE id = ?`, [upgradedHash, row.id], (updateErr) => {
-            if (updateErr) {
-              console.error('Password migration error:', updateErr);
-            }
-          });
-        }
-
-        req.session.user = {
-          id: row.id,
-          name: row.name,
-          email: row.email,
-          phone: row.phone,
-          balance: Number(row.balance || 0)
-        };
-        writeSecurityLog('login_success', req, { userId: row.id, email: row.email });
-        return res.json({ success: true, message: 'Login successful', user: req.session.user });
+      if (!row) {
+        writeSecurityLog('login_failed_no_user', req, { identifier });
+        db.run(`INSERT INTO login_history (email, ip_address, success, reason) VALUES (?, ?, ?, ?)`,
+          [identifier, getClientIp(req), 0, 'User not found']);
+        return res.json({ success: false, message: 'Invalid credentials or not approved' });
       }
 
-      writeSecurityLog('login_failed', req, { identifier });
-      return res.json({ success: false, message: 'Invalid credentials or not approved' });
+      if (row.status !== 'approved') {
+        writeSecurityLog('login_failed_not_approved', req, { userId: row.id, email: row.email, status: row.status });
+        db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
+          [row.id, row.email, getClientIp(req), 0, `Not approved (status: ${row.status})`]);
+        return res.json({ success: false, message: 'Invalid credentials or not approved' });
+      }
+
+      // Verify password
+      const isPasswordValid = verifyPassword(rawPassword, row.password);
+      
+      if (!isPasswordValid) {
+        writeSecurityLog('login_failed_invalid_password', req, { userId: row.id, email: row.email });
+        db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
+          [row.id, row.email, getClientIp(req), 0, 'Invalid password']);
+        console.error('Password verification failed for user:', row.email);
+        return res.json({ success: false, message: 'Invalid credentials or not approved' });
+      }
+
+      // Password upgrade if needed
+      if (!isBcryptHash(row.password)) {
+        const upgradedHash = hashPassword(rawPassword);
+        db.run(`UPDATE users SET password = ? WHERE id = ?`, [upgradedHash, row.id], (updateErr) => {
+          if (updateErr) {
+            console.error('Password migration error:', updateErr);
+          }
+        });
+      }
+
+      // Login successful
+      req.session.user = {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        phone: row.phone,
+        balance: Number(row.balance || 0)
+      };
+      
+      writeSecurityLog('login_success', req, { userId: row.id, email: row.email });
+      db.run(`INSERT INTO login_history (user_id, email, ip_address, success, reason) VALUES (?, ?, ?, ?, ?)`,
+        [row.id, row.email, getClientIp(req), 1, 'Successful login']);
+      
+      return res.json({ success: true, message: 'Login successful', user: req.session.user });
     }
   );
 });
@@ -1069,10 +1204,28 @@ app.get('/api/plans', requireAuth, (req, res) => {
 
 app.get('/api/deposits', requireAuth, (req, res) => {
   db.all(
-    `SELECT id, plan_id, plan_name, amount, status, payment_provider, payment_reference, approved_at, created_at
-     FROM deposits
+    `SELECT d.id, d.plan_id, d.plan_name, d.amount, d.status, d.payment_provider, d.payment_reference, d.mobile_number, d.approved_at, d.withdrawn_at, d.created_at,
+            wr.id AS withdrawal_request_id,
+            wr.status AS withdrawal_request_status,
+            wr.destination_type AS withdrawal_destination_type,
+            wr.provider_name AS withdrawal_provider_name,
+            wr.account_name AS withdrawal_account_name,
+            wr.account_number AS withdrawal_account_number,
+            wr.note AS withdrawal_note,
+            wr.admin_note AS withdrawal_admin_note,
+            wr.requested_at AS withdrawal_requested_at,
+            wr.processed_at AS withdrawal_processed_at
+     FROM deposits d
+     LEFT JOIN withdrawal_requests wr
+       ON wr.id = (
+         SELECT id
+         FROM withdrawal_requests
+         WHERE deposit_id = d.id
+         ORDER BY requested_at DESC, id DESC
+         LIMIT 1
+       )
      WHERE user_id = ?
-     ORDER BY created_at DESC, id DESC`,
+     ORDER BY d.created_at DESC, d.id DESC`,
     [req.session.user.id],
     (err, rows) => {
       if (err) {
@@ -1169,7 +1322,7 @@ app.post('/api/deposit', requireAuth, (req, res) => {
   const payoutDetails = calculatePlanPayout(roundedAmount, plan);
 
   db.run(
-    `INSERT INTO deposits (user_id, plan_id, plan_name, amount, status, payment_provider, payment_reference, mobile_number) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+    `INSERT INTO deposits (user_id, plan_id, plan_name, amount, status, payment_provider, payment_reference, mobile_number, approved_at) VALUES (?, ?, ?, ?, 'approved', ?, ?, ?, CURRENT_TIMESTAMP)`,
     [req.session.user.id, plan.id, plan.name, roundedAmount, provider, reference, phone],
     function(insertErr) {
       if (insertErr) {
@@ -1181,13 +1334,13 @@ app.post('/api/deposit', requireAuth, (req, res) => {
 
       res.json({
         success: true,
-        message: 'Deposit submitted and pending payment confirmation.',
+        message: 'Deposit successful and your investment is now active.',
         deposit: {
           id: depositId,
           planId: plan.id,
           planName: plan.name,
           amount: roundedAmount,
-          status: 'pending',
+          status: 'approved',
           paymentProvider: provider,
           paymentReference: reference,
           mobileNumber: phone,
@@ -1198,6 +1351,109 @@ app.post('/api/deposit', requireAuth, (req, res) => {
         },
         balance: 0
       });
+    }
+  );
+});
+
+app.post('/api/deposits/:id/withdraw', requireAuth, (req, res) => {
+  const depositId = Number(req.params.id);
+  const destinationType = String(req.body?.destinationType || '').trim().toLowerCase();
+  const providerName = String(req.body?.providerName || '').trim();
+  const accountName = String(req.body?.accountName || '').trim();
+  const accountNumber = String(req.body?.accountNumber || '').trim();
+  const note = String(req.body?.note || '').trim();
+
+  if (!depositId) {
+    return res.status(400).json({ success: false, message: 'Invalid deposit id' });
+  }
+
+  if (!['momo', 'bank'].includes(destinationType)) {
+    return res.status(400).json({ success: false, message: 'Select a valid payout destination.' });
+  }
+
+  if (!providerName || !accountName || !accountNumber) {
+    return res.status(400).json({ success: false, message: 'Provider, account name, and account number are required.' });
+  }
+
+  db.get(
+    `SELECT id, user_id, plan_id, plan_name, amount, status, approved_at, withdrawn_at
+     FROM deposits
+     WHERE id = ? AND user_id = ?`,
+    [depositId, req.session.user.id],
+    (findErr, deposit) => {
+      if (findErr) {
+        console.error('Withdraw lookup error:', findErr);
+        return res.status(500).json({ success: false, message: 'Server error' });
+      }
+
+      if (!deposit) {
+        return res.status(404).json({ success: false, message: 'Deposit not found' });
+      }
+
+      if (deposit.status === 'withdrawn') {
+        return res.status(400).json({ success: false, message: 'This deposit has already been withdrawn.' });
+      }
+
+      if (deposit.status !== 'approved' || !deposit.approved_at) {
+        return res.status(400).json({ success: false, message: 'This deposit is not active for withdrawal yet.' });
+      }
+
+      const plan = INVESTMENT_PLANS.find((item) => item.id === deposit.plan_id);
+      if (!plan) {
+        return res.status(400).json({ success: false, message: 'Invalid plan for this deposit.' });
+      }
+
+      const elapsedDays = getElapsedDays(deposit.approved_at);
+      if (elapsedDays < plan.payoutDays) {
+        const remainingDays = plan.payoutDays - elapsedDays;
+        return res.status(400).json({
+          success: false,
+          message: `Withdrawal is available after exactly ${plan.payoutDays} days. ${remainingDays} day(s) remaining.`
+        });
+      }
+
+      const payout = Math.round((Number(deposit.amount || 0) * Number(plan.payoutMultiplier || 1)) * 100) / 100;
+
+      db.get(
+        `SELECT id, status
+         FROM withdrawal_requests
+         WHERE deposit_id = ?
+         ORDER BY requested_at DESC, id DESC
+         LIMIT 1`,
+        [depositId],
+        (requestErr, existingRequest) => {
+          if (requestErr) {
+            console.error('Withdrawal request lookup error:', requestErr);
+            return res.status(500).json({ success: false, message: 'Failed to check previous withdrawal requests.' });
+          }
+
+          if (existingRequest && existingRequest.status === 'pending') {
+            return res.status(400).json({ success: false, message: 'You already have a pending withdrawal request for this deposit.' });
+          }
+
+          db.run(
+            `INSERT INTO withdrawal_requests (
+              deposit_id, user_id, payout_amount, destination_type, provider_name,
+              account_name, account_number, note, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+            [depositId, req.session.user.id, payout, destinationType, providerName, accountName, accountNumber, note || null],
+            function(insertErr) {
+              if (insertErr) {
+                console.error('Withdrawal request insert error:', insertErr);
+                return res.status(500).json({ success: false, message: 'Failed to submit withdrawal request.' });
+              }
+
+              return res.json({
+                success: true,
+                message: `${deposit.plan_name} withdrawal request submitted for admin review.`,
+                payout,
+                payoutDays: plan.payoutDays,
+                requestId: this.lastID
+              });
+            }
+          );
+        }
+      );
     }
   );
 });
@@ -1261,6 +1517,168 @@ app.get('/api/admin/security-logs', (req, res) => {
   });
 });
 
+app.get('/api/admin/login-history', (req, res) => {
+  const limit = Math.min(Number(req.query.limit || 100), 1000);
+  const email = req.query.email ? String(req.query.email).trim().toLowerCase() : null;
+
+  let query = `SELECT id, user_id, email, login_time, ip_address, success, reason FROM login_history ORDER BY login_time DESC LIMIT ?`;
+  let params = [limit];
+
+  if (email) {
+    query = `SELECT id, user_id, email, login_time, ip_address, success, reason FROM login_history WHERE LOWER(email) = ? ORDER BY login_time DESC LIMIT ?`;
+    params = [email, limit];
+  }
+
+  db.all(query, params, (err, rows) => {
+    if (err) {
+      console.error('Login history query error:', err);
+      return res.status(500).json({ success: false, message: 'Database error' });
+    }
+
+    res.json({
+      success: true,
+      count: (rows || []).length,
+      data: rows || []
+    });
+  });
+});
+
+app.get('/api/admin/withdrawal-requests', (req, res) => {
+  db.all(
+    `SELECT wr.id, wr.deposit_id, wr.user_id, wr.payout_amount, wr.destination_type, wr.provider_name,
+            wr.account_name, wr.account_number, wr.note, wr.status, wr.admin_note, wr.requested_at,
+            wr.processed_at, wr.processed_by,
+            d.plan_name, d.amount AS deposit_amount,
+            u.name AS user_name, u.email AS user_email
+     FROM withdrawal_requests wr
+     INNER JOIN deposits d ON d.id = wr.deposit_id
+     INNER JOIN users u ON u.id = wr.user_id
+     ORDER BY CASE WHEN wr.status = 'pending' THEN 0 ELSE 1 END, wr.requested_at DESC, wr.id DESC`,
+    [],
+    (err, rows) => {
+      if (err) {
+        console.error('Error loading withdrawal requests:', err);
+        return res.status(500).json({ success: false, message: 'Failed to load withdrawal requests.' });
+      }
+
+      res.json({ success: true, requests: rows || [] });
+    }
+  );
+});
+
+app.post('/api/admin/approve-withdrawal/:id', (req, res) => {
+  const requestId = Number(req.params.id);
+  const adminNote = String(req.body?.adminNote || '').trim();
+  if (!requestId) {
+    return res.status(400).json({ success: false, message: 'Invalid withdrawal request id.' });
+  }
+
+  db.get(
+    `SELECT wr.id, wr.deposit_id, wr.user_id, wr.payout_amount, wr.provider_name,
+            wr.account_name, wr.account_number, wr.status,
+            d.status AS deposit_status, d.plan_name,
+            u.email AS user_email, u.name AS user_name
+     FROM withdrawal_requests wr
+     INNER JOIN deposits d ON d.id = wr.deposit_id
+     INNER JOIN users u ON u.id = wr.user_id
+     WHERE wr.id = ?`,
+    [requestId],
+    (findErr, requestRow) => {
+      if (findErr) {
+        console.error('Withdrawal approval lookup error:', findErr);
+        return res.status(500).json({ success: false, message: 'Failed to load withdrawal request.' });
+      }
+
+      if (!requestRow || requestRow.status !== 'pending') {
+        return res.status(404).json({ success: false, message: 'Pending withdrawal request not found.' });
+      }
+
+      if (String(requestRow.deposit_status || '').toLowerCase() !== 'approved') {
+        return res.status(400).json({ success: false, message: 'Only approved deposits can be withdrawn.' });
+      }
+
+      db.run(
+        `UPDATE withdrawal_requests
+         SET status = 'approved', admin_note = ?, processed_at = CURRENT_TIMESTAMP, processed_by = ?
+         WHERE id = ? AND status = 'pending'`,
+        [adminNote || null, ADMIN_USERNAME, requestId],
+        function(updateRequestErr) {
+          if (updateRequestErr) {
+            console.error('Withdrawal approval update error:', updateRequestErr);
+            return res.status(500).json({ success: false, message: 'Failed to approve withdrawal request.' });
+          }
+
+          if (!this.changes) {
+            return res.status(400).json({ success: false, message: 'Withdrawal request could not be updated.' });
+          }
+
+          db.run(
+            `UPDATE deposits
+             SET status = 'withdrawn', withdrawn_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND status = 'approved'`,
+            [requestRow.deposit_id],
+            function(updateDepositErr) {
+              if (updateDepositErr) {
+                console.error('Deposit withdrawal update error:', updateDepositErr);
+                return res.status(500).json({ success: false, message: 'Withdrawal approved, but deposit status failed to update.' });
+              }
+
+              res.json({ success: true, message: 'Withdrawal marked as paid manually.' });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+app.post('/api/admin/reject-withdrawal/:id', (req, res) => {
+  const requestId = Number(req.params.id);
+  const adminNote = String(req.body?.adminNote || '').trim();
+  if (!requestId) {
+    return res.status(400).json({ success: false, message: 'Invalid withdrawal request id.' });
+  }
+
+  db.get(
+    `SELECT wr.id, wr.payout_amount, wr.provider_name, wr.account_name, wr.account_number,
+            wr.status, d.plan_name, u.email AS user_email, u.name AS user_name
+     FROM withdrawal_requests wr
+     INNER JOIN deposits d ON d.id = wr.deposit_id
+     INNER JOIN users u ON u.id = wr.user_id
+     WHERE wr.id = ?`,
+    [requestId],
+    (findErr, requestRow) => {
+      if (findErr) {
+        console.error('Withdrawal rejection lookup error:', findErr);
+        return res.status(500).json({ success: false, message: 'Failed to load withdrawal request.' });
+      }
+
+      if (!requestRow || requestRow.status !== 'pending') {
+        return res.status(404).json({ success: false, message: 'Pending withdrawal request not found.' });
+      }
+
+      db.run(
+        `UPDATE withdrawal_requests
+         SET status = 'rejected', admin_note = ?, processed_at = CURRENT_TIMESTAMP, processed_by = ?
+         WHERE id = ? AND status = 'pending'`,
+        [adminNote || null, ADMIN_USERNAME, requestId],
+        function(updateErr) {
+          if (updateErr) {
+            console.error('Withdrawal rejection update error:', updateErr);
+            return res.status(500).json({ success: false, message: 'Failed to reject withdrawal request.' });
+          }
+
+          if (!this.changes) {
+            return res.status(400).json({ success: false, message: 'Withdrawal request could not be updated.' });
+          }
+
+          res.json({ success: true, message: 'Withdrawal request rejected.' });
+        }
+      );
+    }
+  );
+});
+
 app.post('/api/admin/approve-deposit/:id', (req, res) => {
   const depositId = Number(req.params.id);
   if (!depositId) {
@@ -1283,33 +1701,6 @@ app.post('/api/admin/approve-deposit/:id', (req, res) => {
       }
 
       res.json({ success: true, message: 'Deposit approved successfully' });
-
-      db.get(
-        `SELECT d.amount, d.plan_name, d.payment_reference, u.email AS user_email, u.name AS user_name
-         FROM deposits d
-         INNER JOIN users u ON u.id = d.user_id
-         WHERE d.id = ?`,
-        [depositId],
-        (rowErr, row) => {
-          if (rowErr || !row) {
-            if (rowErr) {
-              console.error('Error loading approved deposit email details:', rowErr);
-            }
-            return;
-          }
-
-          sendDepositStatusEmail({
-            email: row.user_email,
-            name: row.user_name,
-            status: 'approved',
-            amount: row.amount,
-            planName: row.plan_name,
-            reference: row.payment_reference
-          }).catch((mailErr) => {
-            console.error('Approved deposit email error:', mailErr);
-          });
-        }
-      );
     }
   );
 });
@@ -1336,33 +1727,6 @@ app.post('/api/admin/reject-deposit/:id', (req, res) => {
       }
 
       res.json({ success: true, message: 'Deposit rejected' });
-
-      db.get(
-        `SELECT d.amount, d.plan_name, d.payment_reference, u.email AS user_email, u.name AS user_name
-         FROM deposits d
-         INNER JOIN users u ON u.id = d.user_id
-         WHERE d.id = ?`,
-        [depositId],
-        (rowErr, row) => {
-          if (rowErr || !row) {
-            if (rowErr) {
-              console.error('Error loading rejected deposit email details:', rowErr);
-            }
-            return;
-          }
-
-          sendDepositStatusEmail({
-            email: row.user_email,
-            name: row.user_name,
-            status: 'rejected',
-            amount: row.amount,
-            planName: row.plan_name,
-            reference: row.payment_reference
-          }).catch((mailErr) => {
-            console.error('Rejected deposit email error:', mailErr);
-          });
-        }
-      );
     }
   );
 });
@@ -1550,14 +1914,6 @@ app.post('/api/payment/webhook', (req, res) => {
             console.error('Webhook deposit approve error:', updateErr);
             return;
           }
-          sendDepositStatusEmail({
-            email: deposit.user_email,
-            name: deposit.user_name,
-            status: 'approved',
-            amount: deposit.amount,
-            planName: deposit.plan_name,
-            reference: deposit.payment_reference
-          }).catch(e => console.error('Webhook email error:', e));
         }
       );
     }
@@ -1588,6 +1944,40 @@ app.post('/api/reject/:id', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+app.get('/health', (req, res) => {
+  db.get('SELECT 1 AS ok', [], (err) => {
+    if (err) {
+      return res.status(503).json({
+        success: false,
+        status: 'unhealthy',
+        message: 'Database check failed'
+      });
+    }
+
+    return res.json({
+      success: true,
+      status: 'healthy',
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString()
+    });
+  });
+});
+
+app.use('/api', (req, res) => {
+  return res.status(404).json({ success: false, message: 'API endpoint not found' });
+});
+
+const server = app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
+});
+
+server.on('error', (error) => {
+  if (error && error.code === 'EADDRINUSE') {
+    console.log(`Port ${PORT} is already in use. Existing Agro Pluse server is likely already running.`);
+    process.exit(0);
+    return;
+  }
+
+  console.error('Server startup error:', error);
+  process.exit(1);
 });
