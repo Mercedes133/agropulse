@@ -1,3 +1,22 @@
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const bodyParser = require('body-parser');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
+const helmet = require('helmet');
+const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
+const nodemailer = require('nodemailer');
+const https = require('https');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATABASE_PATH = process.env.DATABASE_PATH || './users.db';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 // PAYSTACK WEBHOOK HANDLER
 app.post('/api/payment/webhook', (req, res) => {
   // Paystack sends events as JSON
